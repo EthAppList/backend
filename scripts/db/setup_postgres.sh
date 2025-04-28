@@ -8,7 +8,7 @@ else
     # Set PostgreSQL connection details from environment variables
     export PGHOST=${DB_HOST:-postgres}
     export PGPORT=${DB_PORT:-5432}
-    export PGUSER=${DB_USER:-crypto_admin}
+    export PGUSER=${DB_USER:-postgres}
     export PGPASSWORD=${DB_PASSWORD:-your_secure_password}
     export PGDATABASE=${DB_NAME:-crypto_products}
     

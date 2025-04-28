@@ -9,11 +9,6 @@ import (
 
 // Config holds all application configuration
 type Config struct {
-	// Supabase configuration
-	SupabaseURL  string
-	SupabaseKey  string
-	SupabaseAnon string
-
 	// JWT configuration
 	JWTSecret string
 
@@ -24,7 +19,7 @@ type Config struct {
 	// Admin configuration
 	AdminWallet string
 
-	// Database fallback configuration
+	// Database configuration
 	DBHost     string
 	DBPort     string
 	DBUser     string
@@ -82,15 +77,9 @@ func New() (*Config, error) {
 		dbName = os.Getenv("DB_NAME")
 	}
 
-	// Supabase configuration (with fallback to DATABASE_URL credentials if possible)
-	supabaseURL := os.Getenv("SUPABASE_URL")
-	if supabaseURL == "" && dbHost == "" {
-		return nil, errors.New("Either SUPABASE_URL or DB_HOST/DATABASE_URL is required")
-	}
-
-	supabaseKey := os.Getenv("SUPABASE_KEY")
-	if supabaseURL != "" && supabaseKey == "" {
-		return nil, errors.New("SUPABASE_KEY is required when using SUPABASE_URL")
+	// Require database connection details
+	if dbHost == "" {
+		return nil, errors.New("DB_HOST or DATABASE_URL is required")
 	}
 
 	jwtSecret := os.Getenv("JWT_SECRET")
@@ -114,18 +103,15 @@ func New() (*Config, error) {
 	}
 
 	return &Config{
-		SupabaseURL:  supabaseURL,
-		SupabaseKey:  supabaseKey,
-		SupabaseAnon: os.Getenv("SUPABASE_ANON_KEY"),
-		JWTSecret:    jwtSecret,
-		Port:         port,
-		Environment:  environment,
-		AdminWallet:  adminWallet,
-		DBHost:       dbHost,
-		DBPort:       dbPort,
-		DBUser:       dbUser,
-		DBPassword:   dbPassword,
-		DBName:       dbName,
+		JWTSecret:   jwtSecret,
+		Port:        port,
+		Environment: environment,
+		AdminWallet: adminWallet,
+		DBHost:      dbHost,
+		DBPort:      dbPort,
+		DBUser:      dbUser,
+		DBPassword:  dbPassword,
+		DBName:      dbName,
 	}, nil
 }
 

@@ -835,3 +835,8 @@ func (r *PostgresRepository) RejectEdit(editID string) error {
 
 	return nil
 }
+
+// generateID generates a unique ID for database entities
+func generateID() string {
+	return fmt.Sprintf("%d", time.Now().UnixNano())
+}

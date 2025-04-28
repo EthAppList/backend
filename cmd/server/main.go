@@ -29,38 +29,18 @@ func main() {
 		log.Fatalf("Failed to initialize configuration: %v", err)
 	}
 
-	// Initialize repository layer
-	var repo service.DataRepository
-	var closeFunc func() error
-
-	// Check if we're using direct PostgreSQL connection
-	if cfg.DBHost != "" && cfg.DBName != "" {
-		// Use direct PostgreSQL connection
-		log.Println("Using PostgreSQL repository...")
-		pgRepo, err := repository.NewPostgres(cfg)
-		if err != nil {
-			log.Fatalf("Failed to initialize PostgreSQL repository: %v", err)
-		}
-		repo = pgRepo
-		closeFunc = pgRepo.Close
-	} else {
-		// Fallback to Supabase
-		log.Println("Using Supabase repository...")
-		sbRepo, err := repository.New(cfg)
-		if err != nil {
-			log.Fatalf("Failed to initialize Supabase repository: %v", err)
-		}
-		repo = sbRepo
-		closeFunc = func() error { return nil } // Supabase doesn't need explicit closing
+	// Initialize PostgreSQL repository
+	log.Println("Using PostgreSQL repository...")
+	pgRepo, err := repository.NewPostgres(cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize PostgreSQL repository: %v", err)
 	}
 
-	// Make sure to close any open connections
-	if closeFunc != nil {
-		defer closeFunc()
-	}
+	// Make sure to close the connection when done
+	defer pgRepo.Close()
 
 	// Initialize service layer
-	svc := service.New(repo, cfg)
+	svc := service.New(pgRepo, cfg)
 
 	// Initialize router
 	r := mux.NewRouter()
