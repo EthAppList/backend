@@ -1,0 +1,26 @@
+# Git
+.git
+.gitignore
+
+# Docker
+.docker
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+# Development files
+README.md
+DEPLOYMENT.md
+LICENSE
+
+# Build files
+app
+tmp/
+.DS_Store
+
+# Logs
+*.log
+
+# Local environment files
+.env
+*.local 

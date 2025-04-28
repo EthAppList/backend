@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: crypto-backend
+    restart: always
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=crypto_admin
+      - DB_PASSWORD=your_secure_password
+      - DB_NAME=crypto_products
+      - JWT_SECRET=your_jwt_secret
+      - ADMIN_WALLET_ADDRESS=your_admin_wallet_address
+      - PORT=8080
+      - ENVIRONMENT=production
+    depends_on:
+      - postgres
+    networks:
+      - crypto-network
+
+  postgres:
+    image: postgres:14-alpine
+    container_name: crypto-postgres
+    restart: always
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=crypto_admin
+      - POSTGRES_PASSWORD=your_secure_password
+      - POSTGRES_DB=crypto_products
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - crypto-network
+
+networks:
+  crypto-network:
+    driver: bridge
+
+volumes:
+  postgres-data:
+    driver: local 
