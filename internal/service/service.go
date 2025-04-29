@@ -132,6 +132,11 @@ func (s *Service) RejectEdit(editID string) error {
 	return s.repo.RejectEdit(editID)
 }
 
+// GetUserByWallet gets a user by their wallet address
+func (s *Service) GetUserByWallet(walletAddress string) (*models.User, error) {
+	return s.repo.GetUserByWallet(walletAddress)
+}
+
 // Helper functions
 
 // verifySignature verifies an Ethereum signature

@@ -98,15 +98,23 @@ func Auth(cfg *config.Config) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Create user from claims
+			// Get wallet address from claims
 			walletAddr, ok := claims["wallet"].(string)
 			if !ok {
 				http.Error(w, "Invalid token: missing wallet address", http.StatusUnauthorized)
 				return
 			}
 
-			// Set user in context
+			// Get user ID from claims if available
+			userId, ok := claims["id"].(string)
+			if !ok {
+				// If ID not in token, log a warning but continue
+				log.Printf("Warning: Token missing user ID for wallet %s", walletAddr)
+			}
+
+			// Create user with both wallet address and ID
 			user := &models.User{
+				ID:            userId,
 				WalletAddress: walletAddr,
 			}
 

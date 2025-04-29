@@ -182,6 +182,17 @@ func (h *Handler) SubmitProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Check if user ID is missing
+	if user.ID == "" {
+		// Look up the user from the database by wallet address
+		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
+		if err != nil {
+			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		user = fullUser
+	}
+
 	var product models.Product
 	err := json.NewDecoder(r.Body).Decode(&product)
 	if err != nil {
@@ -189,7 +200,7 @@ func (h *Handler) SubmitProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Set submitter ID
+	// Set submitter ID from the user (either from token or looked up)
 	product.SubmitterID = user.ID
 
 	err = h.svc.SubmitProduct(&product)
@@ -210,6 +221,17 @@ func (h *Handler) UpvoteProduct(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
+	}
+
+	// Check if user ID is missing
+	if user.ID == "" {
+		// Look up the user from the database by wallet address
+		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
+		if err != nil {
+			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		user = fullUser
 	}
 
 	vars := mux.Vars(r)
@@ -248,6 +270,9 @@ func (h *Handler) SubmitCategory(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
+
+	// Note: Current implementation doesn't use user ID for category creation
+	// but we might need it in the future for audit trails or permissions
 
 	var category models.Category
 	err := json.NewDecoder(r.Body).Decode(&category)
