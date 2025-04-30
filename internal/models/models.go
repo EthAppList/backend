@@ -27,6 +27,12 @@ type Product struct {
 	MarkdownContent string    `json:"markdown_content" db:"markdown_content"`
 	SubmitterID     string    `json:"submitter_id" db:"submitter_id"`
 	Approved        bool      `json:"approved" db:"approved"`
+	IsVerified      bool      `json:"is_verified" db:"is_verified"`
+	AnalyticsList   []string  `json:"analytics_list" db:"analytics_list"`
+	SecurityScore   float64   `json:"security_score" db:"security_score"`
+	UXScore         float64   `json:"ux_score" db:"ux_score"`
+	DecentScore     float64   `json:"decent_score" db:"decent_score"`
+	VibesScore      float64   `json:"vibes_score" db:"vibes_score"`
 	CreatedAt       time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt       time.Time `json:"updated_at" db:"updated_at"`
 

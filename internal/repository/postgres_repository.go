@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	_ "github.com/lib/pq" // PostgreSQL driver
+	"github.com/lib/pq"
 	"github.com/wesjorgensen/EthAppList/backend/internal/config"
 	"github.com/wesjorgensen/EthAppList/backend/internal/models"
 )
@@ -133,9 +133,17 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 
 	// Insert product
 	query := `
-		INSERT INTO products (id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, approved, created_at, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, approved, created_at, updated_at
+		INSERT INTO products (
+			id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
+			approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+			created_at, updated_at
+		)
+		VALUES (
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+		)
+		RETURNING id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
+			approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+			created_at, updated_at
 	`
 
 	err = tx.QueryRow(
@@ -148,6 +156,12 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 		product.MarkdownContent,
 		product.SubmitterID,
 		product.Approved,
+		product.IsVerified,
+		pq.Array(product.AnalyticsList),
+		product.SecurityScore,
+		product.UXScore,
+		product.DecentScore,
+		product.VibesScore,
 		product.CreatedAt,
 		product.UpdatedAt,
 	).Scan(
@@ -159,6 +173,12 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 		&product.MarkdownContent,
 		&product.SubmitterID,
 		&product.Approved,
+		&product.IsVerified,
+		pq.Array(&product.AnalyticsList),
+		&product.SecurityScore,
+		&product.UXScore,
+		&product.DecentScore,
+		&product.VibesScore,
 		&product.CreatedAt,
 		&product.UpdatedAt,
 	)
@@ -204,7 +224,9 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 // GetProductByID gets a product by its ID
 func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) {
 	query := `
-		SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, approved, created_at, updated_at
+		SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
+		       approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+		       created_at, updated_at
 		FROM products
 		WHERE id = $1
 	`
@@ -219,6 +241,12 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 		&product.MarkdownContent,
 		&product.SubmitterID,
 		&product.Approved,
+		&product.IsVerified,
+		pq.Array(&product.AnalyticsList),
+		&product.SecurityScore,
+		&product.UXScore,
+		&product.DecentScore,
+		&product.VibesScore,
 		&product.CreatedAt,
 		&product.UpdatedAt,
 	)
@@ -265,7 +293,9 @@ func (r *PostgresRepository) GetProducts(
 	// Base query for fetching products
 	query := `
 		SELECT DISTINCT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, 
-               p.markdown_content, p.submitter_id, p.approved, p.created_at, p.updated_at
+               p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
+               p.analytics_list, p.security_score, p.ux_score, p.decent_score, p.vibes_score,
+               p.created_at, p.updated_at
 		FROM products p
 	`
 
@@ -368,6 +398,12 @@ func (r *PostgresRepository) GetProducts(
 			&product.MarkdownContent,
 			&product.SubmitterID,
 			&product.Approved,
+			&product.IsVerified,
+			pq.Array(&product.AnalyticsList),
+			&product.SecurityScore,
+			&product.UXScore,
+			&product.DecentScore,
+			&product.VibesScore,
 			&product.CreatedAt,
 			&product.UpdatedAt,
 		)
@@ -701,8 +737,14 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// Insert the product using the main logic
 			// (simplified for this implementation)
 			_, err = tx.Exec(`
-				INSERT INTO products (id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, approved, created_at, updated_at)
-				VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+				INSERT INTO products (
+					id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
+					approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+					created_at, updated_at
+				)
+				VALUES (
+					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16
+				)
 			`,
 				product.ID,
 				product.Title,
@@ -712,6 +754,12 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				product.MarkdownContent,
 				product.SubmitterID,
 				product.Approved,
+				product.IsVerified,
+				pq.Array(product.AnalyticsList),
+				product.SecurityScore,
+				product.UXScore,
+				product.DecentScore,
+				product.VibesScore,
 				time.Now(),
 				time.Now(),
 			)
@@ -730,14 +778,22 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// Update the product
 			_, err = tx.Exec(`
 				UPDATE products
-				SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, markdown_content = $5, updated_at = $6, approved = true
-				WHERE id = $7
+				SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, markdown_content = $5, 
+					is_verified = $6, analytics_list = $7, security_score = $8, ux_score = $9, 
+					decent_score = $10, vibes_score = $11, updated_at = $12, approved = true
+				WHERE id = $13
 			`,
 				product.Title,
 				product.ShortDesc,
 				product.LongDesc,
 				product.LogoURL,
 				product.MarkdownContent,
+				product.IsVerified,
+				pq.Array(product.AnalyticsList),
+				product.SecurityScore,
+				product.UXScore,
+				product.DecentScore,
+				product.VibesScore,
 				time.Now(),
 				edit.EntityID,
 			)
@@ -839,4 +895,57 @@ func (r *PostgresRepository) RejectEdit(editID string) error {
 // generateID generates a unique ID for database entities
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// DeleteAllProducts deletes all products from the database
+// WARNING: This is a destructive operation and should only be used for testing
+func (r *PostgresRepository) DeleteAllProducts() error {
+	// Start a transaction
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+		}
+	}()
+
+	// Delete from related tables first to maintain referential integrity
+	// Delete product_categories join table entries
+	_, err = tx.Exec("DELETE FROM product_categories")
+	if err != nil {
+		return fmt.Errorf("failed to delete product categories: %w", err)
+	}
+
+	// Delete product_chains join table entries
+	_, err = tx.Exec("DELETE FROM product_chains")
+	if err != nil {
+		return fmt.Errorf("failed to delete product chains: %w", err)
+	}
+
+	// Delete upvotes related to products
+	_, err = tx.Exec("DELETE FROM upvotes")
+	if err != nil {
+		return fmt.Errorf("failed to delete upvotes: %w", err)
+	}
+
+	// Delete pending edits related to products
+	_, err = tx.Exec("DELETE FROM pending_edits WHERE entity_type = 'product'")
+	if err != nil {
+		return fmt.Errorf("failed to delete pending product edits: %w", err)
+	}
+
+	// Finally, delete all products
+	_, err = tx.Exec("DELETE FROM products")
+	if err != nil {
+		return fmt.Errorf("failed to delete products: %w", err)
+	}
+
+	// Commit the transaction
+	if err = tx.Commit(); err != nil {
+		return fmt.Errorf("failed to commit transaction: %w", err)
+	}
+
+	return nil
 }

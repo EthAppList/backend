@@ -331,3 +331,21 @@ func (h *Handler) RejectEdit(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+// DeleteAllProducts handles the temporary endpoint to delete all products
+func (h *Handler) DeleteAllProducts(w http.ResponseWriter, r *http.Request) {
+	err := h.svc.DeleteAllProducts()
+	if err != nil {
+		http.Error(w, "Failed to delete products: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Message string `json:"message"`
+	}{
+		Message: "All products have been deleted successfully",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}

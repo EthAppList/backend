@@ -24,6 +24,7 @@ type DataRepository interface {
 	CreateProduct(product *models.Product) error
 	GetProductByID(id string) (*models.Product, error)
 	GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error)
+	DeleteAllProducts() error
 
 	// Category methods
 	GetCategories() ([]models.Category, error)
@@ -135,6 +136,11 @@ func (s *Service) RejectEdit(editID string) error {
 // GetUserByWallet gets a user by their wallet address
 func (s *Service) GetUserByWallet(walletAddress string) (*models.User, error) {
 	return s.repo.GetUserByWallet(walletAddress)
+}
+
+// DeleteAllProducts removes all products from the database (for testing purposes only)
+func (s *Service) DeleteAllProducts() error {
+	return s.repo.DeleteAllProducts()
 }
 
 // Helper functions

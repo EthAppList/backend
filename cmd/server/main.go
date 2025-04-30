@@ -69,6 +69,11 @@ func main() {
 	adminRouter.Use(middleware.AdminOnly(cfg))
 	handlers.RegisterAdminHandlers(adminRouter, svc)
 
+	// Temporary endpoint for testing - DELETE ALL PRODUCTS
+	dropRouter := apiRouter.PathPrefix("/drop").Subrouter()
+	dropRouter.Use(middleware.AdminOnly(cfg))
+	dropRouter.HandleFunc("", handlers.New(svc).DeleteAllProducts).Methods("POST")
+
 	// Health check
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
