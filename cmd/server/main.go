@@ -64,6 +64,10 @@ func main() {
 	categoriesRouter := apiRouter.PathPrefix("/categories").Subrouter()
 	handlers.RegisterCategoryHandlers(categoriesRouter, svc)
 
+	// User routes
+	userRouter := apiRouter.PathPrefix("/user").Subrouter()
+	handlers.RegisterUserHandlers(userRouter, svc)
+
 	// Admin routes
 	adminRouter := apiRouter.PathPrefix("/admin").Subrouter()
 	adminRouter.Use(middleware.AdminOnly(cfg))
