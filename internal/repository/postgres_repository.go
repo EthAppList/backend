@@ -345,17 +345,10 @@ func (r *PostgresRepository) GetProducts(
 		argIndex++
 	}
 
-	// Add where clause to queries
-	countQuery += " " + whereClause
-	query += " " + whereClause
-
-	// Add sorting
+	// Handle sorting that requires additional JOINs
 	switch sortOption {
-	case "new":
-		query += " ORDER BY p.created_at DESC"
 	case "top_day", "top_week", "top_month", "top_year", "top_all":
-		// For simplicity, we'll implement a basic version here
-		// In a production app, you might use window functions or more complex queries
+		// Add JOIN for upvotes before WHERE clause
 		query += " LEFT JOIN upvotes u ON p.id = u.product_id"
 
 		// Define time window based on sort option
@@ -373,11 +366,22 @@ func (r *PostgresRepository) GetProducts(
 			timeWindow = "100 years" // practically all time
 		}
 
+		// Add time filtering to the where clause if not "top_all"
 		if sortOption != "top_all" {
-			query += fmt.Sprintf(" WHERE u.created_at > NOW() - INTERVAL '%s'", timeWindow)
+			whereClause += fmt.Sprintf(" AND (u.created_at > NOW() - INTERVAL '%s' OR u.created_at IS NULL)", timeWindow)
 		}
+	}
 
-		query += " GROUP BY p.id ORDER BY COUNT(u.id) DESC"
+	// Add where clause to queries
+	countQuery += " " + whereClause
+	query += " " + whereClause
+
+	// Add sorting
+	switch sortOption {
+	case "new":
+		query += " ORDER BY p.created_at DESC"
+	case "top_day", "top_week", "top_month", "top_year", "top_all":
+		query += " GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, p.submitter_id, p.approved, p.is_verified, p.analytics_list, p.security_score, p.ux_score, p.decent_score, p.vibes_score, p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at ORDER BY COUNT(u.id) DESC, p.created_at DESC"
 	default:
 		query += " ORDER BY p.created_at DESC" // Default to newest
 	}
