@@ -307,7 +307,7 @@ func (r *PostgresRepository) GetProducts(
 
 	// Base query for fetching products
 	query := `
-		SELECT DISTINCT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, 
+		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, 
                p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
                p.analytics_list, p.security_score, p.ux_score, p.decent_score, p.vibes_score,
                p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at
@@ -349,6 +349,7 @@ func (r *PostgresRepository) GetProducts(
 	switch sortOption {
 	case "top_day", "top_week", "top_month", "top_year", "top_all":
 		// Add JOIN for upvotes before WHERE clause
+		countQuery += " LEFT JOIN upvotes u ON p.id = u.product_id"
 		query += " LEFT JOIN upvotes u ON p.id = u.product_id"
 
 		// Define time window based on sort option
