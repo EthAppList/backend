@@ -345,47 +345,15 @@ func (r *PostgresRepository) GetProducts(
 		argIndex++
 	}
 
-	// Handle sorting that requires additional JOINs
-	switch sortOption {
-	case "top_day", "top_week", "top_month", "top_year", "top_all":
-		// Add JOIN for upvotes before WHERE clause
-		countQuery += " LEFT JOIN upvotes u ON p.id = u.product_id"
-		query += " LEFT JOIN upvotes u ON p.id = u.product_id"
-
-		// Define time window based on sort option
-		var timeWindow string
-		switch sortOption {
-		case "top_day":
-			timeWindow = "1 day"
-		case "top_week":
-			timeWindow = "1 week"
-		case "top_month":
-			timeWindow = "1 month"
-		case "top_year":
-			timeWindow = "1 year"
-		case "top_all":
-			timeWindow = "100 years" // practically all time
-		}
-
-		// Add time filtering to the where clause if not "top_all"
-		if sortOption != "top_all" {
-			whereClause += fmt.Sprintf(" AND (u.created_at > NOW() - INTERVAL '%s' OR u.created_at IS NULL)", timeWindow)
-		}
-	}
+	// Note: Complex sorting by vote count temporarily simplified to sort by date
+	// TODO: Implement proper vote-based sorting later
 
 	// Add where clause to queries
 	countQuery += " " + whereClause
 	query += " " + whereClause
 
-	// Add sorting
-	switch sortOption {
-	case "new":
-		query += " ORDER BY p.created_at DESC"
-	case "top_day", "top_week", "top_month", "top_year", "top_all":
-		query += " GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, p.submitter_id, p.approved, p.is_verified, p.analytics_list, p.security_score, p.ux_score, p.decent_score, p.vibes_score, p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at ORDER BY COUNT(u.id) DESC, p.created_at DESC"
-	default:
-		query += " ORDER BY p.created_at DESC" // Default to newest
-	}
+	// Add sorting - temporarily all sort by newest until we implement proper vote counting
+	query += " ORDER BY p.created_at DESC"
 
 	// Add pagination
 	offset := (page - 1) * perPage
