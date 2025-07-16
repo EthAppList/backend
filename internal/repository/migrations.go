@@ -5,7 +5,9 @@ import (
 	"io/ioutil"
 	"log"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -27,10 +29,15 @@ func (r *PostgresRepository) RunMigrations() error {
 		return fmt.Errorf("failed to create migrations table: %w", err)
 	}
 
-	// Get list of available migrations
-	migrations, err := r.loadMigrations()
+	// Get list of available migrations from directory
+	migrations, err := r.loadMigrationsFromDirectory()
 	if err != nil {
 		return fmt.Errorf("failed to load migrations: %w", err)
+	}
+
+	if len(migrations) == 0 {
+		log.Println("No migration files found")
+		return nil
 	}
 
 	// Get applied migrations
@@ -67,6 +74,7 @@ func (r *PostgresRepository) createMigrationsTable() error {
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
 			name TEXT NOT NULL,
+			filename TEXT NOT NULL,
 			applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)
 	`
@@ -74,44 +82,53 @@ func (r *PostgresRepository) createMigrationsTable() error {
 	return err
 }
 
-// loadMigrations loads all migration files from the migrations directory
-func (r *PostgresRepository) loadMigrations() ([]Migration, error) {
+// loadMigrationsFromDirectory scans for migration files and loads them
+func (r *PostgresRepository) loadMigrationsFromDirectory() ([]Migration, error) {
 	var migrations []Migration
 
-	// Define migration files in order
-	migrationFiles := []struct {
-		version  int
-		name     string
-		filename string
-	}{
-		{1, "init", "init.sql"},
-		{2, "add_product_fields", "add_product_fields.sql"},
-		{3, "add_product_revisions", "add_product_revisions.sql"},
-	}
+	// Try both local and Docker paths
+	migrationPaths := []string{"migrations", "/root/migrations"}
 
-	for _, mf := range migrationFiles {
-		var content []byte
-		var err error
-
-		// Try to read from local migrations directory first
-		content, err = ioutil.ReadFile(filepath.Join("migrations", mf.filename))
+	for _, basePath := range migrationPaths {
+		files, err := ioutil.ReadDir(basePath)
 		if err != nil {
-			// Try Docker path if local path fails
-			content, err = ioutil.ReadFile(filepath.Join("/root/migrations", mf.filename))
-			if err != nil {
-				// If file doesn't exist in either location, skip it (for optional migrations)
-				log.Printf("Migration file %s not found in local or Docker path, skipping", mf.filename)
+			continue // Try next path
+		}
+
+		log.Printf("Found migration directory: %s", basePath)
+
+		for _, file := range files {
+			if !strings.HasSuffix(file.Name(), ".sql") {
 				continue
 			}
+
+			// Extract version from filename (e.g., "001_init.sql" -> version 1)
+			version, name := r.parseFilename(file.Name())
+			if version == 0 {
+				log.Printf("Skipping file with invalid version: %s", file.Name())
+				continue
+			}
+
+			// Read file content
+			content, err := ioutil.ReadFile(filepath.Join(basePath, file.Name()))
+			if err != nil {
+				log.Printf("Failed to read migration file %s: %v", file.Name(), err)
+				continue
+			}
+
+			migration := Migration{
+				Version:  version,
+				Name:     name,
+				Filename: file.Name(),
+				SQL:      string(content),
+			}
+			migrations = append(migrations, migration)
 		}
 
-		migration := Migration{
-			Version:  mf.version,
-			Name:     mf.name,
-			Filename: mf.filename,
-			SQL:      string(content),
+		// If we found files in this path, don't try other paths
+		if len(migrations) > 0 {
+			break
 		}
-		migrations = append(migrations, migration)
 	}
 
 	// Sort by version
@@ -120,6 +137,28 @@ func (r *PostgresRepository) loadMigrations() ([]Migration, error) {
 	})
 
 	return migrations, nil
+}
+
+// parseFilename extracts version and name from migration filename
+// Expected format: "001_init.sql", "002_add_product_fields.sql", etc.
+func (r *PostgresRepository) parseFilename(filename string) (int, string) {
+	// Remove .sql extension
+	nameWithoutExt := strings.TrimSuffix(filename, ".sql")
+
+	// Match pattern like "001_init" or "002_add_product_fields"
+	re := regexp.MustCompile(`^(\d+)_(.+)$`)
+	matches := re.FindStringSubmatch(nameWithoutExt)
+
+	if len(matches) != 3 {
+		return 0, ""
+	}
+
+	version, err := strconv.Atoi(matches[1])
+	if err != nil {
+		return 0, ""
+	}
+
+	return version, matches[2]
 }
 
 // getAppliedMigrations returns a list of applied migration versions
@@ -174,24 +213,17 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 		}
 	}()
 
-	// Execute migration SQL
-	// Split SQL by semicolons to handle multiple statements
-	statements := r.splitSQL(migration.SQL)
-	for _, stmt := range statements {
-		stmt = strings.TrimSpace(stmt)
-		if stmt == "" {
-			continue
-		}
-		_, err = tx.Exec(stmt)
-		if err != nil {
-			return fmt.Errorf("failed to execute SQL statement: %w", err)
-		}
+	// Execute the entire SQL file as one statement
+	// PostgreSQL can handle multiple statements in a single Exec call
+	_, err = tx.Exec(migration.SQL)
+	if err != nil {
+		return fmt.Errorf("failed to execute migration SQL: %w", err)
 	}
 
 	// Record migration as applied
 	_, err = tx.Exec(
-		"INSERT INTO schema_migrations (version, name) VALUES ($1, $2)",
-		migration.Version, migration.Name,
+		"INSERT INTO schema_migrations (version, name, filename) VALUES ($1, $2, $3)",
+		migration.Version, migration.Name, migration.Filename,
 	)
 	if err != nil {
 		return err
@@ -203,62 +235,4 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 	}
 
 	return nil
-}
-
-// splitSQL splits SQL text into individual statements
-func (r *PostgresRepository) splitSQL(sql string) []string {
-	var statements []string
-	var currentStatement strings.Builder
-	var inFunction bool
-	var dollarQuoteTag string
-
-	lines := strings.Split(sql, "\n")
-
-	for _, line := range lines {
-		trimmedLine := strings.TrimSpace(line)
-
-		// Skip comments and empty lines
-		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "--") {
-			continue
-		}
-
-		// Check for dollar quoting (for functions and complex strings)
-		if strings.Contains(trimmedLine, "$$") {
-			// Extract dollar quote tag
-			parts := strings.Split(trimmedLine, "$$")
-			if len(parts) >= 2 {
-				if dollarQuoteTag == "" {
-					// Starting dollar quote
-					dollarQuoteTag = parts[0] + "$$" + parts[1] + "$$"
-					inFunction = true
-				} else if strings.Contains(line, dollarQuoteTag) {
-					// Ending dollar quote
-					dollarQuoteTag = ""
-					inFunction = false
-				}
-			}
-		}
-
-		// Add line to current statement
-		currentStatement.WriteString(line + "\n")
-
-		// Check if statement ends (semicolon at end of line, not in function)
-		if !inFunction && strings.HasSuffix(trimmedLine, ";") {
-			stmt := strings.TrimSpace(currentStatement.String())
-			if stmt != "" {
-				statements = append(statements, stmt)
-			}
-			currentStatement.Reset()
-		}
-	}
-
-	// Add any remaining statement
-	if currentStatement.Len() > 0 {
-		stmt := strings.TrimSpace(currentStatement.String())
-		if stmt != "" {
-			statements = append(statements, stmt)
-		}
-	}
-
-	return statements
 }
