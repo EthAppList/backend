@@ -665,6 +665,52 @@ func (r *PostgresRepository) GetPendingEdits() ([]models.PendingEdit, error) {
 	return pendingEdits, nil
 }
 
+// CreatePendingEdit creates a new pending edit for admin review
+func (r *PostgresRepository) CreatePendingEdit(userID, entityType, entityID, changeType string, changeData interface{}) (*models.PendingEdit, error) {
+	// Generate ID for the pending edit
+	editID := generateID()
+
+	// Convert changeData to JSON
+	changeDataJSON, err := json.Marshal(changeData)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal change data: %w", err)
+	}
+
+	// Insert the pending edit
+	query := `
+		INSERT INTO pending_edits (id, user_id, entity_type, entity_id, change_type, change_data, status, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7)
+		RETURNING id, user_id, entity_type, entity_id, change_type, change_data, status, created_at
+	`
+
+	edit := &models.PendingEdit{}
+	err = r.db.QueryRow(
+		query,
+		editID,
+		userID,
+		entityType,
+		entityID,
+		changeType,
+		string(changeDataJSON),
+		time.Now(),
+	).Scan(
+		&edit.ID,
+		&edit.UserID,
+		&edit.EntityType,
+		&edit.EntityID,
+		&edit.ChangeType,
+		&edit.ChangeData,
+		&edit.Status,
+		&edit.CreatedAt,
+	)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to create pending edit: %w", err)
+	}
+
+	return edit, nil
+}
+
 // ApproveEdit approves a pending edit
 func (r *PostgresRepository) ApproveEdit(editID string) error {
 	// Begin transaction

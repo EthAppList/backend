@@ -44,6 +44,7 @@ type DataRepository interface {
 
 	// Admin methods
 	GetPendingEdits() ([]models.PendingEdit, error)
+	CreatePendingEdit(userID, entityType, entityID, changeType string, changeData interface{}) (*models.PendingEdit, error)
 	ApproveEdit(editID string) error
 	RejectEdit(editID string) error
 }
@@ -107,9 +108,31 @@ func (s *Service) GetProduct(id string) (*models.Product, error) {
 	return s.repo.GetProductByID(id)
 }
 
-// SubmitProduct creates a new product
+// SubmitProduct creates a new product submission for admin review
 func (s *Service) SubmitProduct(product *models.Product) error {
-	return s.repo.CreateProduct(product)
+	// Generate a temporary ID for the product if not provided
+	if product.ID == "" {
+		product.ID = fmt.Sprintf("pending_%d", time.Now().UnixNano())
+	}
+
+	// Set default values for submission
+	product.Approved = false // Will be set to true when approved
+	product.CurrentRevisionNumber = 1
+
+	// Create a pending edit for admin review instead of creating the product directly
+	_, err := s.repo.CreatePendingEdit(
+		product.SubmitterID,
+		"product",
+		product.ID,
+		"create",
+		product,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to submit product for review: %w", err)
+	}
+
+	return nil
 }
 
 // GetCategories returns all categories
