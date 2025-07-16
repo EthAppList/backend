@@ -70,15 +70,25 @@ func (r *PostgresRepository) RunMigrations() error {
 
 // createMigrationsTable creates the migrations tracking table
 func (r *PostgresRepository) createMigrationsTable() error {
+	// First create the basic table
 	query := `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version INTEGER PRIMARY KEY,
 			name TEXT NOT NULL,
-			filename TEXT NOT NULL,
 			applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 		)
 	`
 	_, err := r.db.Exec(query)
+	if err != nil {
+		return err
+	}
+
+	// Add filename column if it doesn't exist
+	alterQuery := `
+		ALTER TABLE schema_migrations 
+		ADD COLUMN IF NOT EXISTS filename TEXT
+	`
+	_, err = r.db.Exec(alterQuery)
 	return err
 }
 
@@ -231,8 +241,9 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 	}
 
 	// Record migration as applied
+	// Use INSERT ON CONFLICT to handle duplicates gracefully
 	_, err = tx.Exec(
-		"INSERT INTO schema_migrations (version, name, filename) VALUES ($1, $2, $3)",
+		"INSERT INTO schema_migrations (version, name, filename) VALUES ($1, $2, $3) ON CONFLICT (version) DO NOTHING",
 		migration.Version, migration.Name, migration.Filename,
 	)
 	if err != nil {
