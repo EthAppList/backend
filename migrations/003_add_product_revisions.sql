@@ -2,11 +2,11 @@
 -- This migration adds support for tracking complete revision history of products
 
 -- Add revision tracking fields to main products table
-ALTER TABLE products ADD COLUMN current_revision_number INTEGER DEFAULT 1;
-ALTER TABLE products ADD COLUMN last_editor_id TEXT REFERENCES users(id);
+ALTER TABLE products ADD COLUMN IF NOT EXISTS current_revision_number INTEGER DEFAULT 1;
+ALTER TABLE products ADD COLUMN IF NOT EXISTS last_editor_id TEXT REFERENCES users(id);
 
 -- Store complete snapshots of each revision
-CREATE TABLE product_revisions (
+CREATE TABLE IF NOT EXISTS product_revisions (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     revision_number INTEGER NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE product_revisions (
 );
 
 -- Track field-level changes for efficient diffing
-CREATE TABLE product_field_changes (
+CREATE TABLE IF NOT EXISTS product_field_changes (
     id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
     revision_id TEXT NOT NULL REFERENCES product_revisions(id) ON DELETE CASCADE,
     field_name TEXT NOT NULL,
@@ -30,12 +30,12 @@ CREATE TABLE product_field_changes (
 );
 
 -- Indexes for performance
-CREATE INDEX idx_product_revisions_product_id ON product_revisions(product_id);
-CREATE INDEX idx_product_revisions_created_at ON product_revisions(created_at);
-CREATE INDEX idx_product_revisions_editor_id ON product_revisions(editor_id);
-CREATE INDEX idx_product_revisions_product_revision ON product_revisions(product_id, revision_number);
-CREATE INDEX idx_field_changes_revision_id ON product_field_changes(revision_id);
-CREATE INDEX idx_field_changes_field_name ON product_field_changes(field_name);
+CREATE INDEX IF NOT EXISTS idx_product_revisions_product_id ON product_revisions(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_revisions_created_at ON product_revisions(created_at);
+CREATE INDEX IF NOT EXISTS idx_product_revisions_editor_id ON product_revisions(editor_id);
+CREATE INDEX IF NOT EXISTS idx_product_revisions_product_revision ON product_revisions(product_id, revision_number);
+CREATE INDEX IF NOT EXISTS idx_field_changes_revision_id ON product_field_changes(revision_id);
+CREATE INDEX IF NOT EXISTS idx_field_changes_field_name ON product_field_changes(field_name);
 
 -- Initialize revision tracking for existing products
 INSERT INTO product_revisions (product_id, revision_number, editor_id, edit_summary, product_data)
@@ -62,7 +62,8 @@ SELECT
         'created_at', created_at,
         'updated_at', updated_at
     ) as product_data
-FROM products;
+FROM products
+ON CONFLICT (product_id, revision_number) DO NOTHING;
 
 -- Update products table with current revision numbers
 UPDATE products SET current_revision_number = 1; 
