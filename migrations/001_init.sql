@@ -103,9 +103,13 @@ END;
 $$ LANGUAGE plpgsql;
 
 -- Create triggers to update the updated_at column automatically
+DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_products_updated_at ON products;
 CREATE TRIGGER update_products_updated_at BEFORE UPDATE ON products FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_categories_updated_at ON categories;
 CREATE TRIGGER update_categories_updated_at BEFORE UPDATE ON categories FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+DROP TRIGGER IF EXISTS update_chains_updated_at ON chains;
 CREATE TRIGGER update_chains_updated_at BEFORE UPDATE ON chains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert some default chains
@@ -141,12 +145,15 @@ ALTER TABLE product_chains ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pending_edits ENABLE ROW LEVEL SECURITY;
 
 -- Create policies (customize these according to your actual auth setup)
+DROP POLICY IF EXISTS "Anyone can read approved products" ON products;
 CREATE POLICY "Anyone can read approved products" ON products
     FOR SELECT USING (approved = true);
 
+DROP POLICY IF EXISTS "Anyone can read categories" ON categories;
 CREATE POLICY "Anyone can read categories" ON categories
     FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Anyone can read chains" ON chains;
 CREATE POLICY "Anyone can read chains" ON chains
     FOR SELECT USING (true);
 
