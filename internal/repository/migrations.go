@@ -213,11 +213,21 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 		}
 	}()
 
-	// Execute the entire SQL file as one statement
-	// PostgreSQL can handle multiple statements in a single Exec call
-	_, err = tx.Exec(migration.SQL)
-	if err != nil {
-		return fmt.Errorf("failed to execute migration SQL: %w", err)
+	// Parse SQL into individual statements
+	statements := r.parseSQL(migration.SQL)
+
+	// Execute each statement
+	for i, stmt := range statements {
+		stmt = strings.TrimSpace(stmt)
+		if stmt == "" {
+			continue
+		}
+
+		log.Printf("Executing statement %d/%d from %s", i+1, len(statements), migration.Filename)
+		_, err = tx.Exec(stmt)
+		if err != nil {
+			return fmt.Errorf("failed to execute statement %d in migration %s: %w\nStatement: %s", i+1, migration.Name, err, stmt)
+		}
 	}
 
 	// Record migration as applied
@@ -235,4 +245,105 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 	}
 
 	return nil
+}
+
+// parseSQL properly parses SQL text into individual executable statements
+// Handles dollar-quoted strings, functions, and complex SQL structures
+func (r *PostgresRepository) parseSQL(sql string) []string {
+	var statements []string
+	var currentStatement strings.Builder
+	var inDollarQuote bool
+	var dollarQuoteTag string
+	var parenthesesDepth int
+
+	lines := strings.Split(sql, "\n")
+
+	for _, line := range lines {
+		trimmedLine := strings.TrimSpace(line)
+
+		// Skip empty lines and pure comment lines
+		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "--") {
+			continue
+		}
+
+		// Handle dollar quoting for functions
+		if strings.Contains(line, "$$") {
+			parts := strings.Split(line, "$$")
+			for i, part := range parts {
+				if i%2 == 1 { // We're inside dollar quotes
+					if !inDollarQuote {
+						// Starting dollar quote
+						dollarQuoteTag = part
+						inDollarQuote = true
+					} else if part == dollarQuoteTag {
+						// Ending dollar quote with matching tag
+						inDollarQuote = false
+						dollarQuoteTag = ""
+					}
+				}
+			}
+		}
+
+		// Track parentheses depth for complex statements
+		if !inDollarQuote {
+			parenthesesDepth += strings.Count(line, "(") - strings.Count(line, ")")
+		}
+
+		// Add line to current statement
+		currentStatement.WriteString(line + "\n")
+
+		// Check if statement ends
+		shouldEndStatement := false
+		if !inDollarQuote && parenthesesDepth <= 0 {
+			// Look for statement terminators
+			if strings.HasSuffix(trimmedLine, ";") {
+				// Special handling for function definitions and complex statements
+				currentStmt := currentStatement.String()
+				if !r.isIncompleteStatement(currentStmt) {
+					shouldEndStatement = true
+				}
+			}
+		}
+
+		if shouldEndStatement {
+			stmt := strings.TrimSpace(currentStatement.String())
+			if stmt != "" {
+				statements = append(statements, stmt)
+			}
+			currentStatement.Reset()
+			parenthesesDepth = 0
+		}
+	}
+
+	// Add any remaining statement
+	if currentStatement.Len() > 0 {
+		stmt := strings.TrimSpace(currentStatement.String())
+		if stmt != "" {
+			statements = append(statements, stmt)
+		}
+	}
+
+	return statements
+}
+
+// isIncompleteStatement checks if a statement appears to be incomplete
+func (r *PostgresRepository) isIncompleteStatement(stmt string) bool {
+	stmt = strings.TrimSpace(stmt)
+
+	// Check for incomplete CREATE statements
+	if strings.HasPrefix(strings.ToUpper(stmt), "CREATE") {
+		// If it's a CREATE statement, make sure it's not just the beginning
+		lines := strings.Split(stmt, "\n")
+		if len(lines) < 3 {
+			return true
+		}
+	}
+
+	// Check for unmatched dollar quotes
+	dollarCount := strings.Count(stmt, "$$")
+	if dollarCount%2 != 0 {
+		return true
+	}
+
+	return false
 }
