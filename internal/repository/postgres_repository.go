@@ -38,10 +38,17 @@ func NewPostgres(cfg *config.Config) (*PostgresRepository, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
-	return &PostgresRepository{
+	repo := &PostgresRepository{
 		db:  db,
 		cfg: cfg,
-	}, nil
+	}
+
+	// Run database migrations automatically
+	if err := repo.RunMigrations(); err != nil {
+		return nil, fmt.Errorf("failed to run database migrations: %w", err)
+	}
+
+	return repo, nil
 }
 
 // Close closes the database connection
