@@ -102,6 +102,8 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+
+
 -- Create triggers to update the updated_at column automatically (idempotent)
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
@@ -112,26 +114,26 @@ CREATE TRIGGER update_categories_updated_at BEFORE UPDATE ON categories FOR EACH
 DROP TRIGGER IF EXISTS update_chains_updated_at ON chains;
 CREATE TRIGGER update_chains_updated_at BEFORE UPDATE ON chains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert some default chains (idempotent)
+-- Insert some default chains using name as ID (idempotent)
 INSERT INTO chains (id, name, icon) VALUES 
-('1', 'Ethereum', 'https://cryptologos.cc/logos/ethereum-eth-logo.png'),
-('2', 'Polygon', 'https://cryptologos.cc/logos/polygon-matic-logo.png'),
-('3', 'Solana', 'https://cryptologos.cc/logos/solana-sol-logo.png'),
-('4', 'Binance Smart Chain', 'https://cryptologos.cc/logos/bnb-bnb-logo.png'),
-('5', 'Arbitrum', 'https://cryptologos.cc/logos/arbitrum-arb-logo.png'),
-('6', 'Optimism', 'https://cryptologos.cc/logos/optimism-ethereum-op-logo.png'),
-('7', 'Avalanche', 'https://cryptologos.cc/logos/avalanche-avax-logo.png')
+('Ethereum', 'Ethereum', 'https://cryptologos.cc/logos/ethereum-eth-logo.png'),
+('Polygon', 'Polygon', 'https://cryptologos.cc/logos/polygon-matic-logo.png'),
+('Solana', 'Solana', 'https://cryptologos.cc/logos/solana-sol-logo.png'),
+('Binance Smart Chain', 'Binance Smart Chain', 'https://cryptologos.cc/logos/bnb-bnb-logo.png'),
+('Arbitrum', 'Arbitrum', 'https://cryptologos.cc/logos/arbitrum-arb-logo.png'),
+('Optimism', 'Optimism', 'https://cryptologos.cc/logos/optimism-ethereum-op-logo.png'),
+('Avalanche', 'Avalanche', 'https://cryptologos.cc/logos/avalanche-avax-logo.png')
 ON CONFLICT (id) DO NOTHING;
 
--- Insert some example categories (idempotent)
+-- Insert some example categories using name as ID (idempotent)
 INSERT INTO categories (id, name, description) VALUES 
-('1', 'DeFi', 'Decentralized Finance applications'),
-('2', 'NFT', 'NFT marketplaces and tools'),
-('3', 'GameFi', 'Blockchain games and gaming platforms'),
-('4', 'Infrastructure', 'Blockchain infrastructure and developer tools'),
-('5', 'Social', 'Social platforms built on blockchain'),
-('6', 'DAO', 'Decentralized Autonomous Organizations and governance'),
-('7', 'Privacy', 'Privacy-focused applications')
+('DeFi', 'DeFi', 'Decentralized Finance applications'),
+('NFT', 'NFT', 'NFT marketplaces and tools'),
+('GameFi', 'GameFi', 'Blockchain games and gaming platforms'),
+('Infrastructure', 'Infrastructure', 'Blockchain infrastructure and developer tools'),
+('Social', 'Social', 'Social platforms built on blockchain'),
+('DAO', 'DAO', 'Decentralized Autonomous Organizations and governance'),
+('Privacy', 'Privacy', 'Privacy-focused applications')
 ON CONFLICT (id) DO NOTHING;
 
 -- Create row level security policies (idempotent)

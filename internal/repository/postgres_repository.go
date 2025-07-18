@@ -211,9 +211,15 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	// Insert category relationships
 	if len(product.Categories) > 0 {
 		for _, category := range product.Categories {
+			// Ensure category exists (create if new) and get its ID
+			categoryID, err := r.ensureCategoryExists(tx, category.Name)
+			if err != nil {
+				return fmt.Errorf("failed to ensure category exists: %w", err)
+			}
+
 			_, err = tx.Exec(
 				"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
-				product.ID, category.ID,
+				product.ID, categoryID,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to link product to category: %w", err)
@@ -224,9 +230,15 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	// Insert chain relationships
 	if len(product.Chains) > 0 {
 		for _, chain := range product.Chains {
+			// Ensure chain exists (create if new) and get its ID
+			chainID, err := r.ensureChainExists(tx, chain.Name)
+			if err != nil {
+				return fmt.Errorf("failed to ensure chain exists: %w", err)
+			}
+
 			_, err = tx.Exec(
 				"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
-				product.ID, chain.ID,
+				product.ID, chainID,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to link product to chain: %w", err)
@@ -909,13 +921,20 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			if len(product.Categories) > 0 {
 				for _, category := range product.Categories {
-					log.Printf("ApproveEdit: Linking product %s to category %s", product.ID, category.ID)
+					// Ensure category exists (create if new) and get its ID
+					categoryID, err := r.ensureCategoryExists(tx, category.Name)
+					if err != nil {
+						log.Printf("ApproveEdit: Failed to ensure category %s exists: %v", category.Name, err)
+						return fmt.Errorf("failed to ensure category exists: %w", err)
+					}
+
+					log.Printf("ApproveEdit: Linking product %s to category %s (ID: %s)", product.ID, category.Name, categoryID)
 					_, err = tx.Exec(
 						"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
-						product.ID, category.ID,
+						product.ID, categoryID,
 					)
 					if err != nil {
-						log.Printf("ApproveEdit: Failed to link product to category %s: %v", category.ID, err)
+						log.Printf("ApproveEdit: Failed to link product to category %s: %v", categoryID, err)
 						return fmt.Errorf("failed to link product to category: %w", err)
 					}
 				}
@@ -923,13 +942,20 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			if len(product.Chains) > 0 {
 				for _, chain := range product.Chains {
-					log.Printf("ApproveEdit: Linking product %s to chain %s", product.ID, chain.ID)
+					// Ensure chain exists (create if new) and get its ID
+					chainID, err := r.ensureChainExists(tx, chain.Name)
+					if err != nil {
+						log.Printf("ApproveEdit: Failed to ensure chain %s exists: %v", chain.Name, err)
+						return fmt.Errorf("failed to ensure chain exists: %w", err)
+					}
+
+					log.Printf("ApproveEdit: Linking product %s to chain %s (ID: %s)", product.ID, chain.Name, chainID)
 					_, err = tx.Exec(
 						"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
-						product.ID, chain.ID,
+						product.ID, chainID,
 					)
 					if err != nil {
-						log.Printf("ApproveEdit: Failed to link product to chain %s: %v", chain.ID, err)
+						log.Printf("ApproveEdit: Failed to link product to chain %s: %v", chainID, err)
 						return fmt.Errorf("failed to link product to chain: %w", err)
 					}
 				}
@@ -1052,9 +1078,15 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			}
 			if len(newProduct.Categories) > 0 {
 				for _, category := range newProduct.Categories {
+					// Ensure category exists (create if new) and get its ID
+					categoryID, err := r.ensureCategoryExists(tx, category.Name)
+					if err != nil {
+						return fmt.Errorf("failed to ensure category exists: %w", err)
+					}
+
 					_, err = tx.Exec(
 						"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
-						newProduct.ID, category.ID,
+						newProduct.ID, categoryID,
 					)
 					if err != nil {
 						return fmt.Errorf("failed to link product to category: %w", err)
@@ -1068,9 +1100,15 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			}
 			if len(newProduct.Chains) > 0 {
 				for _, chain := range newProduct.Chains {
+					// Ensure chain exists (create if new) and get its ID
+					chainID, err := r.ensureChainExists(tx, chain.Name)
+					if err != nil {
+						return fmt.Errorf("failed to ensure chain exists: %w", err)
+					}
+
 					_, err = tx.Exec(
 						"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
-						newProduct.ID, chain.ID,
+						newProduct.ID, chainID,
 					)
 					if err != nil {
 						return fmt.Errorf("failed to link product to chain: %w", err)
@@ -1176,6 +1214,62 @@ func (r *PostgresRepository) RejectEdit(editID string) error {
 // generateID generates a unique ID for database entities
 func generateID() string {
 	return fmt.Sprintf("%d", time.Now().UnixNano())
+}
+
+// ensureCategoryExists creates a category if it doesn't exist, returns the category ID
+func (r *PostgresRepository) ensureCategoryExists(tx *sql.Tx, categoryName string) (string, error) {
+	// Check if category already exists by name (case insensitive)
+	var existingID string
+	err := tx.QueryRow("SELECT id FROM categories WHERE LOWER(name) = LOWER($1)", categoryName).Scan(&existingID)
+	if err == nil {
+		// Category exists, return its ID
+		return existingID, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", fmt.Errorf("failed to check category existence: %w", err)
+	}
+
+	// Category doesn't exist, create it using name as ID
+	_, err = tx.Exec(`
+		INSERT INTO categories (id, name, description, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`, categoryName, categoryName, fmt.Sprintf("Auto-generated category for %s", categoryName), time.Now(), time.Now())
+
+	if err != nil {
+		return "", fmt.Errorf("failed to create category: %w", err)
+	}
+
+	log.Printf("Created new category: %s", categoryName)
+	return categoryName, nil
+}
+
+// ensureChainExists creates a chain if it doesn't exist, returns the chain ID
+func (r *PostgresRepository) ensureChainExists(tx *sql.Tx, chainName string) (string, error) {
+	// Check if chain already exists by name (case insensitive)
+	var existingID string
+	err := tx.QueryRow("SELECT id FROM chains WHERE LOWER(name) = LOWER($1)", chainName).Scan(&existingID)
+	if err == nil {
+		// Chain exists, return its ID
+		return existingID, nil
+	}
+	if err != sql.ErrNoRows {
+		return "", fmt.Errorf("failed to check chain existence: %w", err)
+	}
+
+	// Chain doesn't exist, create it using name as ID
+	_, err = tx.Exec(`
+		INSERT INTO chains (id, name, icon, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5)
+		ON CONFLICT (id) DO NOTHING
+	`, chainName, chainName, "", time.Now(), time.Now())
+
+	if err != nil {
+		return "", fmt.Errorf("failed to create chain: %w", err)
+	}
+
+	log.Printf("Created new chain: %s", chainName)
+	return chainName, nil
 }
 
 // DeleteAllProducts deletes all products from the database
