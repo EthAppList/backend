@@ -269,13 +269,11 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 }
 
 // parseSQL properly parses SQL text into individual executable statements
-// Handles dollar-quoted strings, functions, and complex SQL structures
+// Simplified approach that handles dollar-quoted functions correctly
 func (r *PostgresRepository) parseSQL(sql string) []string {
 	var statements []string
 	var currentStatement strings.Builder
 	var inDollarQuote bool
-	var dollarQuoteTag string
-	var parenthesesDepth int
 
 	lines := strings.Split(sql, "\n")
 
@@ -287,52 +285,26 @@ func (r *PostgresRepository) parseSQL(sql string) []string {
 			continue
 		}
 
-		// Handle dollar quoting for functions
+		// Simple dollar quote detection
 		if strings.Contains(line, "$$") {
-			parts := strings.Split(line, "$$")
-			for i, part := range parts {
-				if i%2 == 1 { // We're inside dollar quotes
-					if !inDollarQuote {
-						// Starting dollar quote
-						dollarQuoteTag = part
-						inDollarQuote = true
-					} else if part == dollarQuoteTag {
-						// Ending dollar quote with matching tag
-						inDollarQuote = false
-						dollarQuoteTag = ""
-					}
-				}
+			// Count number of $$ in the line
+			count := strings.Count(line, "$$")
+			if count%2 == 1 {
+				// Odd number means we're entering or leaving dollar quotes
+				inDollarQuote = !inDollarQuote
 			}
-		}
-
-		// Track parentheses depth for complex statements
-		if !inDollarQuote {
-			parenthesesDepth += strings.Count(line, "(") - strings.Count(line, ")")
 		}
 
 		// Add line to current statement
 		currentStatement.WriteString(line + "\n")
 
-		// Check if statement ends
-		shouldEndStatement := false
-		if !inDollarQuote && parenthesesDepth <= 0 {
-			// Look for statement terminators
-			if strings.HasSuffix(trimmedLine, ";") {
-				// Special handling for function definitions and complex statements
-				currentStmt := currentStatement.String()
-				if !r.isIncompleteStatement(currentStmt) {
-					shouldEndStatement = true
-				}
-			}
-		}
-
-		if shouldEndStatement {
+		// Check if statement ends (only when not in dollar quotes)
+		if !inDollarQuote && strings.HasSuffix(trimmedLine, ";") {
 			stmt := strings.TrimSpace(currentStatement.String())
 			if stmt != "" {
 				statements = append(statements, stmt)
 			}
 			currentStatement.Reset()
-			parenthesesDepth = 0
 		}
 	}
 
@@ -345,26 +317,4 @@ func (r *PostgresRepository) parseSQL(sql string) []string {
 	}
 
 	return statements
-}
-
-// isIncompleteStatement checks if a statement appears to be incomplete
-func (r *PostgresRepository) isIncompleteStatement(stmt string) bool {
-	stmt = strings.TrimSpace(stmt)
-
-	// Check for incomplete CREATE statements
-	if strings.HasPrefix(strings.ToUpper(stmt), "CREATE") {
-		// If it's a CREATE statement, make sure it's not just the beginning
-		lines := strings.Split(stmt, "\n")
-		if len(lines) < 3 {
-			return true
-		}
-	}
-
-	// Check for unmatched dollar quotes
-	dollarCount := strings.Count(stmt, "$$")
-	if dollarCount%2 != 0 {
-		return true
-	}
-
-	return false
 }

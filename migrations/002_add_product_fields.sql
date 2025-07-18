@@ -9,8 +9,8 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS vibes_score DECIMAL(3,2) DEFAULT 0
 -- Update get_top_products_by_period function to include new fields (idempotent)
 CREATE OR REPLACE FUNCTION get_top_products_by_period(
     period TEXT, -- 'day', 'week', 'month', 'year', 'all'
-    category_id TEXT DEFAULT NULL,
-    chain_id TEXT DEFAULT NULL,
+    category_filter TEXT DEFAULT NULL,
+    chain_filter TEXT DEFAULT NULL,
     limit_count INTEGER DEFAULT 10,
     offset_count INTEGER DEFAULT 0
 ) RETURNS TABLE (
@@ -45,50 +45,130 @@ BEGIN
     END CASE;
     
     -- Handle both chain and category filters
-    IF category_id IS NOT NULL AND chain_id IS NOT NULL THEN
+    IF category_filter IS NOT NULL AND chain_filter IS NOT NULL THEN
         RETURN QUERY
-        SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
+        SELECT 
+            p.id,
+            p.title,
+            p.short_desc,
+            COALESCE(p.long_desc, '') as long_desc,
+            COALESCE(p.logo_url, '') as logo_url,
+            COALESCE(p.markdown_content, '') as markdown_content,
+            p.submitter_id,
+            p.approved,
+            COALESCE(p.is_verified, false) as is_verified,
+            COALESCE(p.analytics_list, '{}') as analytics_list,
+            COALESCE(p.security_score, 0.5) as security_score,
+            COALESCE(p.ux_score, 0.5) as ux_score,
+            COALESCE(p.decent_score, 0.5) as decent_score,
+            COALESCE(p.vibes_score, 0.5) as vibes_score,
+            p.created_at,
+            p.updated_at,
+            COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = get_top_products_by_period.category_id
-        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = get_top_products_by_period.chain_id
+        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_filter
+        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_filter
         WHERE p.approved = true
-        GROUP BY p.id
+        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
+                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
+                 p.security_score, p.ux_score, p.decent_score, p.vibes_score, 
+                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;
     -- Handle only category filter
-    ELSIF category_id IS NOT NULL THEN
+    ELSIF category_filter IS NOT NULL THEN
         RETURN QUERY
-        SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
+        SELECT 
+            p.id,
+            p.title,
+            p.short_desc,
+            COALESCE(p.long_desc, '') as long_desc,
+            COALESCE(p.logo_url, '') as logo_url,
+            COALESCE(p.markdown_content, '') as markdown_content,
+            p.submitter_id,
+            p.approved,
+            COALESCE(p.is_verified, false) as is_verified,
+            COALESCE(p.analytics_list, '{}') as analytics_list,
+            COALESCE(p.security_score, 0.5) as security_score,
+            COALESCE(p.ux_score, 0.5) as ux_score,
+            COALESCE(p.decent_score, 0.5) as decent_score,
+            COALESCE(p.vibes_score, 0.5) as vibes_score,
+            p.created_at,
+            p.updated_at,
+            COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = get_top_products_by_period.category_id
+        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_filter
         WHERE p.approved = true
-        GROUP BY p.id
+        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
+                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
+                 p.security_score, p.ux_score, p.decent_score, p.vibes_score, 
+                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;
     -- Handle only chain filter
-    ELSIF chain_id IS NOT NULL THEN
+    ELSIF chain_filter IS NOT NULL THEN
         RETURN QUERY
-        SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
+        SELECT 
+            p.id,
+            p.title,
+            p.short_desc,
+            COALESCE(p.long_desc, '') as long_desc,
+            COALESCE(p.logo_url, '') as logo_url,
+            COALESCE(p.markdown_content, '') as markdown_content,
+            p.submitter_id,
+            p.approved,
+            COALESCE(p.is_verified, false) as is_verified,
+            COALESCE(p.analytics_list, '{}') as analytics_list,
+            COALESCE(p.security_score, 0.5) as security_score,
+            COALESCE(p.ux_score, 0.5) as ux_score,
+            COALESCE(p.decent_score, 0.5) as decent_score,
+            COALESCE(p.vibes_score, 0.5) as vibes_score,
+            p.created_at,
+            p.updated_at,
+            COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = get_top_products_by_period.chain_id
+        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_filter
         WHERE p.approved = true
-        GROUP BY p.id
+        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
+                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
+                 p.security_score, p.ux_score, p.decent_score, p.vibes_score, 
+                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;
     -- No filters
     ELSE
         RETURN QUERY
-        SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
+        SELECT 
+            p.id,
+            p.title,
+            p.short_desc,
+            COALESCE(p.long_desc, '') as long_desc,
+            COALESCE(p.logo_url, '') as logo_url,
+            COALESCE(p.markdown_content, '') as markdown_content,
+            p.submitter_id,
+            p.approved,
+            COALESCE(p.is_verified, false) as is_verified,
+            COALESCE(p.analytics_list, '{}') as analytics_list,
+            COALESCE(p.security_score, 0.5) as security_score,
+            COALESCE(p.ux_score, 0.5) as ux_score,
+            COALESCE(p.decent_score, 0.5) as decent_score,
+            COALESCE(p.vibes_score, 0.5) as vibes_score,
+            p.created_at,
+            p.updated_at,
+            COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
         WHERE p.approved = true
-        GROUP BY p.id
+        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
+                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
+                 p.security_score, p.ux_score, p.decent_score, p.vibes_score, 
+                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;
