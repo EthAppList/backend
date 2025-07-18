@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -331,12 +332,16 @@ func (h *Handler) ApproveEdit(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
+	log.Printf("ApproveEdit: Attempting to approve edit with ID: %s", id)
+
 	err := h.svc.ApproveEdit(id)
 	if err != nil {
+		log.Printf("ApproveEdit: Error approving edit %s: %v", id, err)
 		http.Error(w, "Failed to approve edit: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("ApproveEdit: Successfully approved edit with ID: %s", id)
 	w.WriteHeader(http.StatusNoContent)
 }
 

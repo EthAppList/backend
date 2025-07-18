@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -713,13 +714,17 @@ func (r *PostgresRepository) CreatePendingEdit(userID, entityType, entityID, cha
 
 // ApproveEdit approves a pending edit
 func (r *PostgresRepository) ApproveEdit(editID string) error {
+	log.Printf("ApproveEdit: Starting approval process for edit ID: %s", editID)
+
 	// Begin transaction
 	tx, err := r.db.Begin()
 	if err != nil {
+		log.Printf("ApproveEdit: Failed to begin transaction: %v", err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
 	defer func() {
 		if err != nil {
+			log.Printf("ApproveEdit: Rolling back transaction due to error: %v", err)
 			tx.Rollback()
 		}
 	}()
@@ -728,6 +733,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 	var edit models.PendingEdit
 	var processedAt sql.NullTime
 
+	log.Printf("ApproveEdit: Fetching pending edit details for ID: %s", editID)
 	err = tx.QueryRow(`
 		SELECT id, user_id, entity_type, entity_id, change_type, change_data, status, created_at, processed_at
 		FROM pending_edits
@@ -746,8 +752,10 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 	if err != nil {
 		if err == sql.ErrNoRows {
+			log.Printf("ApproveEdit: Pending edit with ID %s not found", editID)
 			return fmt.Errorf("pending edit with ID %s not found", editID)
 		}
+		log.Printf("ApproveEdit: Failed to get edit details: %v", err)
 		return fmt.Errorf("failed to get edit details: %w", err)
 	}
 
@@ -758,19 +766,27 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 	// Check if edit is already processed
 	if edit.Status != "pending" {
+		log.Printf("ApproveEdit: Edit %s is already %s", editID, edit.Status)
 		return fmt.Errorf("edit is already %s", edit.Status)
 	}
+
+	log.Printf("ApproveEdit: Edit details - Type: %s, ChangeType: %s, EntityID: %s", edit.EntityType, edit.ChangeType, edit.EntityID)
 
 	// Apply the edit based on entity type and change type
 	switch edit.EntityType {
 	case "product":
 		if edit.ChangeType == "create" {
+			log.Printf("ApproveEdit: Processing product creation for edit %s", editID)
+
 			// Apply the product creation
 			var product models.Product
 			err = json.Unmarshal([]byte(edit.ChangeData), &product)
 			if err != nil {
+				log.Printf("ApproveEdit: Failed to unmarshal product data: %v", err)
 				return fmt.Errorf("failed to unmarshal product data: %w", err)
 			}
+
+			log.Printf("ApproveEdit: Unmarshaled product data - Title: %s, SubmitterID: %s", product.Title, product.SubmitterID)
 
 			// Set approved flag and revision tracking
 			product.Approved = true
@@ -820,6 +836,8 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				product.VibesScore = 0.5
 			}
 
+			log.Printf("ApproveEdit: Inserting product with ID: %s, Title: %s", product.ID, product.Title)
+
 			// Insert the product using the main logic
 			_, err = tx.Exec(`
 				INSERT INTO products (
@@ -852,8 +870,12 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			)
 
 			if err != nil {
+				log.Printf("ApproveEdit: Failed to insert product: %v", err)
+				log.Printf("ApproveEdit: Product data - ID: %s, Title: %s, SubmitterID: %s", product.ID, product.Title, product.SubmitterID)
 				return fmt.Errorf("failed to insert approved product: %w", err)
 			}
+
+			log.Printf("ApproveEdit: Successfully inserted product %s", product.ID)
 
 			// Check if product_revisions table exists before creating revision
 			var tableExists bool
@@ -869,22 +891,31 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			}
 
 			if tableExists {
+				log.Printf("ApproveEdit: Creating initial revision for product %s", product.ID)
 				// Create initial revision
 				editSummary := "Initial product version (approved edit)"
 				err = r.createProductRevisionTx(tx, product.ID, 1, &edit.UserID, &editSummary, nil, &product)
 				if err != nil {
+					log.Printf("ApproveEdit: Failed to create initial revision: %v", err)
 					return fmt.Errorf("failed to create initial revision: %w", err)
 				}
+				log.Printf("ApproveEdit: Successfully created initial revision for product %s", product.ID)
+			} else {
+				log.Printf("ApproveEdit: Skipping revision creation - product_revisions table does not exist")
 			}
 
 			// Insert category and chain relationships
+			log.Printf("ApproveEdit: Linking %d categories and %d chains for product %s", len(product.Categories), len(product.Chains), product.ID)
+
 			if len(product.Categories) > 0 {
 				for _, category := range product.Categories {
+					log.Printf("ApproveEdit: Linking product %s to category %s", product.ID, category.ID)
 					_, err = tx.Exec(
 						"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
 						product.ID, category.ID,
 					)
 					if err != nil {
+						log.Printf("ApproveEdit: Failed to link product to category %s: %v", category.ID, err)
 						return fmt.Errorf("failed to link product to category: %w", err)
 					}
 				}
@@ -892,11 +923,13 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			if len(product.Chains) > 0 {
 				for _, chain := range product.Chains {
+					log.Printf("ApproveEdit: Linking product %s to chain %s", product.ID, chain.ID)
 					_, err = tx.Exec(
 						"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
 						product.ID, chain.ID,
 					)
 					if err != nil {
+						log.Printf("ApproveEdit: Failed to link product to chain %s: %v", chain.ID, err)
 						return fmt.Errorf("failed to link product to chain: %w", err)
 					}
 				}
@@ -1102,6 +1135,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 	}
 
 	// Update the pending edit status
+	log.Printf("ApproveEdit: Updating pending edit status to approved for edit %s", editID)
 	_, err = tx.Exec(`
 		UPDATE pending_edits
 		SET status = 'approved', processed_at = $1
@@ -1109,14 +1143,18 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 	`, time.Now(), editID)
 
 	if err != nil {
+		log.Printf("ApproveEdit: Failed to update edit status: %v", err)
 		return fmt.Errorf("failed to update edit status: %w", err)
 	}
 
 	// Commit the transaction
+	log.Printf("ApproveEdit: Committing transaction for edit %s", editID)
 	if err = tx.Commit(); err != nil {
+		log.Printf("ApproveEdit: Failed to commit transaction: %v", err)
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	log.Printf("ApproveEdit: Successfully approved edit %s", editID)
 	return nil
 }
 
