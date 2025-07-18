@@ -804,7 +804,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				product.DecentScore,
 				product.VibesScore,
 				product.CurrentRevisionNumber,
-				product.SubmitterID, // last_editor_id is initially the submitter
+				edit.UserID, // last_editor_id is the approver
 				time.Now(),
 				time.Now(),
 			)
@@ -815,9 +815,34 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			// Create initial revision
 			editSummary := "Initial product version (approved edit)"
-			err = r.createProductRevisionTx(tx, product.ID, 1, &product.SubmitterID, &editSummary, nil, &product)
+			err = r.createProductRevisionTx(tx, product.ID, 1, &edit.UserID, &editSummary, nil, &product)
 			if err != nil {
 				return fmt.Errorf("failed to create initial revision: %w", err)
+			}
+
+			// Insert category and chain relationships
+			if len(product.Categories) > 0 {
+				for _, category := range product.Categories {
+					_, err = tx.Exec(
+						"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
+						product.ID, category.ID,
+					)
+					if err != nil {
+						return fmt.Errorf("failed to link product to category: %w", err)
+					}
+				}
+			}
+
+			if len(product.Chains) > 0 {
+				for _, chain := range product.Chains {
+					_, err = tx.Exec(
+						"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
+						product.ID, chain.ID,
+					)
+					if err != nil {
+						return fmt.Errorf("failed to link product to chain: %w", err)
+					}
+				}
 			}
 
 		} else if edit.ChangeType == "update" {
@@ -913,6 +938,39 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			if err != nil {
 				return fmt.Errorf("failed to update product: %w", err)
+			}
+
+			// Update category and chain relationships
+			_, err = tx.Exec("DELETE FROM product_categories WHERE product_id = $1", newProduct.ID)
+			if err != nil {
+				return fmt.Errorf("failed to clear product categories: %w", err)
+			}
+			if len(newProduct.Categories) > 0 {
+				for _, category := range newProduct.Categories {
+					_, err = tx.Exec(
+						"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
+						newProduct.ID, category.ID,
+					)
+					if err != nil {
+						return fmt.Errorf("failed to link product to category: %w", err)
+					}
+				}
+			}
+
+			_, err = tx.Exec("DELETE FROM product_chains WHERE product_id = $1", newProduct.ID)
+			if err != nil {
+				return fmt.Errorf("failed to clear product chains: %w", err)
+			}
+			if len(newProduct.Chains) > 0 {
+				for _, chain := range newProduct.Chains {
+					_, err = tx.Exec(
+						"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
+						newProduct.ID, chain.ID,
+					)
+					if err != nil {
+						return fmt.Errorf("failed to link product to chain: %w", err)
+					}
+				}
 			}
 		}
 	case "category":
