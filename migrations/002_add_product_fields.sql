@@ -1,4 +1,4 @@
--- Add new fields to products table
+-- Add new fields to products table (idempotent)
 ALTER TABLE products ADD COLUMN IF NOT EXISTS is_verified BOOLEAN DEFAULT FALSE;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS analytics_list TEXT[] DEFAULT '{}';
 ALTER TABLE products ADD COLUMN IF NOT EXISTS security_score DECIMAL(3,2) DEFAULT 0.50;
@@ -6,8 +6,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS ux_score DECIMAL(3,2) DEFAULT 0.50
 ALTER TABLE products ADD COLUMN IF NOT EXISTS decent_score DECIMAL(3,2) DEFAULT 0.50;
 ALTER TABLE products ADD COLUMN IF NOT EXISTS vibes_score DECIMAL(3,2) DEFAULT 0.50;
 
--- Update get_top_products_by_period function to include new fields
-DROP FUNCTION IF EXISTS get_top_products_by_period(TEXT, TEXT, TEXT, INTEGER, INTEGER);
+-- Update get_top_products_by_period function to include new fields (idempotent)
 CREATE OR REPLACE FUNCTION get_top_products_by_period(
     period TEXT, -- 'day', 'week', 'month', 'year', 'all'
     category_id TEXT DEFAULT NULL,
@@ -51,8 +50,8 @@ BEGIN
         SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_id
-        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_id
+        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = get_top_products_by_period.category_id
+        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = get_top_products_by_period.chain_id
         WHERE p.approved = true
         GROUP BY p.id
         ORDER BY upvote_count DESC, p.created_at DESC
@@ -64,7 +63,7 @@ BEGIN
         SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_id
+        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = get_top_products_by_period.category_id
         WHERE p.approved = true
         GROUP BY p.id
         ORDER BY upvote_count DESC, p.created_at DESC
@@ -76,7 +75,7 @@ BEGIN
         SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_id
+        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = get_top_products_by_period.chain_id
         WHERE p.approved = true
         GROUP BY p.id
         ORDER BY upvote_count DESC, p.created_at DESC

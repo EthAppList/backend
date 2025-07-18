@@ -11,6 +11,29 @@ import (
 	"strings"
 )
 
+// IDEMPOTENT MIGRATION SYSTEM
+//
+// This system runs ALL migrations every time the application starts.
+// All migration files are designed to be idempotent (safe to run multiple times).
+//
+// Key principles:
+// - Use CREATE TABLE IF NOT EXISTS
+// - Use ALTER TABLE ... ADD COLUMN IF NOT EXISTS
+// - Use CREATE INDEX IF NOT EXISTS
+// - Use INSERT ... ON CONFLICT DO NOTHING
+// - Use CREATE OR REPLACE for functions
+// - Use DROP ... IF EXISTS before CREATE for policies/triggers
+//
+// Benefits:
+// - Easy to modify existing migrations during development
+// - No need to track migration state
+// - Simpler deployment process
+// - Self-healing (fixes any missing tables/columns)
+//
+// Trade-offs:
+// - Slightly slower startup (runs all migrations each time)
+// - Requires careful design to ensure true idempotency
+
 // Migration represents a database migration
 type Migration struct {
 	Version  int
@@ -19,15 +42,9 @@ type Migration struct {
 	SQL      string
 }
 
-// RunMigrations executes all pending database migrations
+// RunMigrations executes all database migrations every time (idempotent approach)
 func (r *PostgresRepository) RunMigrations() error {
-	log.Println("Starting database migrations...")
-
-	// Create migrations table if it doesn't exist
-	err := r.createMigrationsTable()
-	if err != nil {
-		return fmt.Errorf("failed to create migrations table: %w", err)
-	}
+	log.Println("Starting database migrations (running all migrations)...")
 
 	// Get list of available migrations from directory
 	migrations, err := r.loadMigrationsFromDirectory()
@@ -42,35 +59,17 @@ func (r *PostgresRepository) RunMigrations() error {
 
 	log.Printf("Found %d migration files", len(migrations))
 
-	// Get applied migrations
-	appliedMigrations, err := r.getAppliedMigrations()
-	if err != nil {
-		return fmt.Errorf("failed to get applied migrations: %w", err)
-	}
-
-	log.Printf("Already applied migrations: %v", appliedMigrations)
-
-	// Filter out already applied migrations
-	pendingMigrations := r.filterPendingMigrations(migrations, appliedMigrations)
-
-	if len(pendingMigrations) == 0 {
-		log.Println("No pending migrations")
-		return nil
-	}
-
-	log.Printf("Pending migrations: %d", len(pendingMigrations))
-
-	// Execute pending migrations
-	for _, migration := range pendingMigrations {
+	// Execute all migrations (they are designed to be idempotent)
+	for _, migration := range migrations {
 		log.Printf("Running migration: %s (version %d)", migration.Name, migration.Version)
 		err := r.executeMigration(migration)
 		if err != nil {
 			return fmt.Errorf("failed to execute migration %s: %w", migration.Name, err)
 		}
-		log.Printf("Successfully applied migration: %s", migration.Name)
+		log.Printf("Successfully executed migration: %s", migration.Name)
 	}
 
-	log.Printf("Successfully applied %d migrations", len(pendingMigrations))
+	log.Printf("Successfully executed all %d migrations", len(migrations))
 	return nil
 }
 
@@ -231,7 +230,7 @@ func (r *PostgresRepository) filterPendingMigrations(allMigrations []Migration, 
 	return pending
 }
 
-// executeMigration runs a single migration
+// executeMigration runs a single migration (idempotent)
 func (r *PostgresRepository) executeMigration(migration Migration) error {
 	// Begin transaction
 	tx, err := r.db.Begin()
@@ -261,17 +260,7 @@ func (r *PostgresRepository) executeMigration(migration Migration) error {
 		}
 	}
 
-	// Record migration as applied
-	// Use INSERT ON CONFLICT to handle duplicates gracefully
-	_, err = tx.Exec(
-		"INSERT INTO schema_migrations (version, name, filename) VALUES ($1, $2, $3) ON CONFLICT (version) DO NOTHING",
-		migration.Version, migration.Name, migration.Filename,
-	)
-	if err != nil {
-		return err
-	}
-
-	// Commit transaction
+	// Commit transaction (no need to record migration since all migrations run every time)
 	if err = tx.Commit(); err != nil {
 		return err
 	}

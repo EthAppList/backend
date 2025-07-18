@@ -1,8 +1,8 @@
--- Enable the required extensions
+-- Enable the required extensions (idempotent)
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm";
 
--- Create users table
+-- Create users table (idempotent)
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     wallet_address TEXT UNIQUE NOT NULL,
@@ -11,7 +11,7 @@ CREATE TABLE IF NOT EXISTS users (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create categories table
+-- Create categories table (idempotent)
 CREATE TABLE IF NOT EXISTS categories (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS categories (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create chains table
+-- Create chains table (idempotent)
 CREATE TABLE IF NOT EXISTS chains (
     id TEXT PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
@@ -29,7 +29,7 @@ CREATE TABLE IF NOT EXISTS chains (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create products table
+-- Create products table (idempotent)
 CREATE TABLE IF NOT EXISTS products (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL,
@@ -43,7 +43,7 @@ CREATE TABLE IF NOT EXISTS products (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create upvotes table
+-- Create upvotes table (idempotent)
 CREATE TABLE IF NOT EXISTS upvotes (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
@@ -52,21 +52,21 @@ CREATE TABLE IF NOT EXISTS upvotes (
     UNIQUE (user_id, product_id)
 );
 
--- Create product_categories junction table
+-- Create product_categories junction table (idempotent)
 CREATE TABLE IF NOT EXISTS product_categories (
     product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
     category_id TEXT REFERENCES categories(id) ON DELETE CASCADE,
     PRIMARY KEY (product_id, category_id)
 );
 
--- Create product_chains junction table
+-- Create product_chains junction table (idempotent)
 CREATE TABLE IF NOT EXISTS product_chains (
     product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
     chain_id TEXT REFERENCES chains(id) ON DELETE CASCADE,
     PRIMARY KEY (product_id, chain_id)
 );
 
--- Create pending_edits table for moderation
+-- Create pending_edits table for moderation (idempotent)
 CREATE TABLE IF NOT EXISTS pending_edits (
     id TEXT PRIMARY KEY,
     user_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -79,7 +79,7 @@ CREATE TABLE IF NOT EXISTS pending_edits (
     processed_at TIMESTAMP WITH TIME ZONE
 );
 
--- Create indexes for performance
+-- Create indexes for performance (idempotent)
 CREATE INDEX IF NOT EXISTS idx_products_approved ON products(approved);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
 CREATE INDEX IF NOT EXISTS idx_upvotes_product_id ON upvotes(product_id);
@@ -89,11 +89,11 @@ CREATE INDEX IF NOT EXISTS idx_product_categories_category_id ON product_categor
 CREATE INDEX IF NOT EXISTS idx_product_chains_product_id ON product_chains(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_chains_chain_id ON product_chains(chain_id);
 
--- Create text search configuration for product search
+-- Create text search configuration for product search (idempotent)
 CREATE INDEX IF NOT EXISTS idx_products_title_trgm ON products USING GIN (title gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_products_short_desc_trgm ON products USING GIN (short_desc gin_trgm_ops);
 
--- Create function to update updated_at timestamp
+-- Create function to update updated_at timestamp (idempotent)
 CREATE OR REPLACE FUNCTION update_updated_at_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -102,7 +102,7 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
--- Create triggers to update the updated_at column automatically
+-- Create triggers to update the updated_at column automatically (idempotent)
 DROP TRIGGER IF EXISTS update_users_updated_at ON users;
 CREATE TRIGGER update_users_updated_at BEFORE UPDATE ON users FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 DROP TRIGGER IF EXISTS update_products_updated_at ON products;
@@ -112,7 +112,7 @@ CREATE TRIGGER update_categories_updated_at BEFORE UPDATE ON categories FOR EACH
 DROP TRIGGER IF EXISTS update_chains_updated_at ON chains;
 CREATE TRIGGER update_chains_updated_at BEFORE UPDATE ON chains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
--- Insert some default chains
+-- Insert some default chains (idempotent)
 INSERT INTO chains (id, name, icon) VALUES 
 ('1', 'Ethereum', 'https://cryptologos.cc/logos/ethereum-eth-logo.png'),
 ('2', 'Polygon', 'https://cryptologos.cc/logos/polygon-matic-logo.png'),
@@ -123,7 +123,7 @@ INSERT INTO chains (id, name, icon) VALUES
 ('7', 'Avalanche', 'https://cryptologos.cc/logos/avalanche-avax-logo.png')
 ON CONFLICT (id) DO NOTHING;
 
--- Insert some example categories
+-- Insert some example categories (idempotent)
 INSERT INTO categories (id, name, description) VALUES 
 ('1', 'DeFi', 'Decentralized Finance applications'),
 ('2', 'NFT', 'NFT marketplaces and tools'),
@@ -134,7 +134,7 @@ INSERT INTO categories (id, name, description) VALUES
 ('7', 'Privacy', 'Privacy-focused applications')
 ON CONFLICT (id) DO NOTHING;
 
--- Create row level security policies
+-- Create row level security policies (idempotent)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
@@ -144,7 +144,7 @@ ALTER TABLE product_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_chains ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pending_edits ENABLE ROW LEVEL SECURITY;
 
--- Create policies (customize these according to your actual auth setup)
+-- Create policies (idempotent - will replace existing)
 DROP POLICY IF EXISTS "Anyone can read approved products" ON products;
 CREATE POLICY "Anyone can read approved products" ON products
     FOR SELECT USING (approved = true);
@@ -157,7 +157,7 @@ DROP POLICY IF EXISTS "Anyone can read chains" ON chains;
 CREATE POLICY "Anyone can read chains" ON chains
     FOR SELECT USING (true);
 
--- Function to get top products by upvotes in a date range
+-- Function to get top products by upvotes in a date range (idempotent)
 CREATE OR REPLACE FUNCTION get_top_products_by_period(
     period TEXT, -- 'day', 'week', 'month', 'year', 'all'
     category_id TEXT DEFAULT NULL,
@@ -195,8 +195,8 @@ BEGIN
         SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_id
-        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_id
+        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = get_top_products_by_period.category_id
+        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = get_top_products_by_period.chain_id
         WHERE p.approved = true
         GROUP BY p.id
         ORDER BY upvote_count DESC, p.created_at DESC
@@ -208,7 +208,7 @@ BEGIN
         SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_id
+        JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = get_top_products_by_period.category_id
         WHERE p.approved = true
         GROUP BY p.id
         ORDER BY upvote_count DESC, p.created_at DESC
@@ -220,7 +220,7 @@ BEGIN
         SELECT p.*, COUNT(u.id)::BIGINT AS upvote_count
         FROM products p
         LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
-        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_id
+        JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = get_top_products_by_period.chain_id
         WHERE p.approved = true
         GROUP BY p.id
         ORDER BY upvote_count DESC, p.created_at DESC
