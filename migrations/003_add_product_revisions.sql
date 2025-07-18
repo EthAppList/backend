@@ -7,7 +7,7 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS last_editor_id TEXT REFERENCES use
 
 -- Store complete snapshots of each revision
 CREATE TABLE IF NOT EXISTS product_revisions (
-    id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    id TEXT PRIMARY KEY DEFAULT CAST(EXTRACT(EPOCH FROM NOW()) * 1000000 + EXTRACT(MICROSECONDS FROM NOW()) AS TEXT),
     product_id TEXT NOT NULL REFERENCES products(id) ON DELETE CASCADE,
     revision_number INTEGER NOT NULL,
     editor_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS product_revisions (
 
 -- Track field-level changes for efficient diffing
 CREATE TABLE IF NOT EXISTS product_field_changes (
-    id TEXT PRIMARY KEY DEFAULT gen_random_uuid(),
+    id TEXT PRIMARY KEY DEFAULT CAST(EXTRACT(EPOCH FROM NOW()) * 1000000 + EXTRACT(MICROSECONDS FROM NOW()) + RANDOM() * 1000 AS TEXT),
     revision_id TEXT NOT NULL REFERENCES product_revisions(id) ON DELETE CASCADE,
     field_name TEXT NOT NULL,
     old_value TEXT,

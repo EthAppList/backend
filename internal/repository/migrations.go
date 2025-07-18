@@ -40,11 +40,15 @@ func (r *PostgresRepository) RunMigrations() error {
 		return nil
 	}
 
+	log.Printf("Found %d migration files", len(migrations))
+
 	// Get applied migrations
 	appliedMigrations, err := r.getAppliedMigrations()
 	if err != nil {
 		return fmt.Errorf("failed to get applied migrations: %w", err)
 	}
+
+	log.Printf("Already applied migrations: %v", appliedMigrations)
 
 	// Filter out already applied migrations
 	pendingMigrations := r.filterPendingMigrations(migrations, appliedMigrations)
@@ -54,9 +58,11 @@ func (r *PostgresRepository) RunMigrations() error {
 		return nil
 	}
 
+	log.Printf("Pending migrations: %d", len(pendingMigrations))
+
 	// Execute pending migrations
 	for _, migration := range pendingMigrations {
-		log.Printf("Running migration: %s", migration.Name)
+		log.Printf("Running migration: %s (version %d)", migration.Name, migration.Version)
 		err := r.executeMigration(migration)
 		if err != nil {
 			return fmt.Errorf("failed to execute migration %s: %w", migration.Name, err)
@@ -96,15 +102,24 @@ func (r *PostgresRepository) createMigrationsTable() error {
 func (r *PostgresRepository) loadMigrationsFromDirectory() ([]Migration, error) {
 	var migrations []Migration
 
-	// Try both local and Docker paths
-	migrationPaths := []string{"migrations", "/root/migrations"}
+	// Try multiple paths for Railway deployment
+	migrationPaths := []string{
+		"migrations",              // Local development
+		"/root/migrations",        // Docker container
+		"./migrations",            // Current directory
+		"/app/migrations",         // Alternative container path
+		"/opt/railway/migrations", // Railway specific path
+	}
 
+	var foundPath string
 	for _, basePath := range migrationPaths {
 		files, err := ioutil.ReadDir(basePath)
 		if err != nil {
+			log.Printf("Migration path not found: %s", basePath)
 			continue // Try next path
 		}
 
+		foundPath = basePath
 		log.Printf("Found migration directory: %s", basePath)
 
 		for _, file := range files {
@@ -133,6 +148,7 @@ func (r *PostgresRepository) loadMigrationsFromDirectory() ([]Migration, error) 
 				SQL:      string(content),
 			}
 			migrations = append(migrations, migration)
+			log.Printf("Loaded migration: %s (version %d)", file.Name(), version)
 		}
 
 		// If we found files in this path, don't try other paths
@@ -141,11 +157,16 @@ func (r *PostgresRepository) loadMigrationsFromDirectory() ([]Migration, error) 
 		}
 	}
 
+	if foundPath == "" {
+		return nil, fmt.Errorf("no migration directory found in any of the expected paths: %v", migrationPaths)
+	}
+
 	// Sort by version
 	sort.Slice(migrations, func(i, j int) bool {
 		return migrations[i].Version < migrations[j].Version
 	})
 
+	log.Printf("Loaded %d migrations from %s", len(migrations), foundPath)
 	return migrations, nil
 }
 

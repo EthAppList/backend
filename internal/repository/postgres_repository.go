@@ -745,6 +745,9 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 	)
 
 	if err != nil {
+		if err == sql.ErrNoRows {
+			return fmt.Errorf("pending edit with ID %s not found", editID)
+		}
 		return fmt.Errorf("failed to get edit details: %w", err)
 	}
 
@@ -776,6 +779,45 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// If entity ID exists, use it; otherwise generate a new one
 			if edit.EntityID != "" {
 				product.ID = edit.EntityID
+			} else {
+				product.ID = generateID()
+			}
+
+			// Ensure required fields are set with defaults if missing
+			if product.SubmitterID == "" {
+				product.SubmitterID = edit.UserID
+			}
+			if product.Title == "" {
+				return fmt.Errorf("product title is required")
+			}
+			if product.ShortDesc == "" {
+				return fmt.Errorf("product short description is required")
+			}
+
+			// Set default values for optional fields
+			if product.LongDesc == "" {
+				product.LongDesc = ""
+			}
+			if product.LogoURL == "" {
+				product.LogoURL = ""
+			}
+			if product.MarkdownContent == "" {
+				product.MarkdownContent = ""
+			}
+			if product.AnalyticsList == nil {
+				product.AnalyticsList = []string{}
+			}
+			if product.SecurityScore == 0 {
+				product.SecurityScore = 0.5
+			}
+			if product.UXScore == 0 {
+				product.UXScore = 0.5
+			}
+			if product.DecentScore == 0 {
+				product.DecentScore = 0.5
+			}
+			if product.VibesScore == 0 {
+				product.VibesScore = 0.5
 			}
 
 			// Insert the product using the main logic
@@ -813,11 +855,26 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				return fmt.Errorf("failed to insert approved product: %w", err)
 			}
 
-			// Create initial revision
-			editSummary := "Initial product version (approved edit)"
-			err = r.createProductRevisionTx(tx, product.ID, 1, &edit.UserID, &editSummary, nil, &product)
+			// Check if product_revisions table exists before creating revision
+			var tableExists bool
+			err = tx.QueryRow(`
+				SELECT EXISTS (
+					SELECT 1 FROM information_schema.tables 
+					WHERE table_name = 'product_revisions' AND table_schema = 'public'
+				)
+			`).Scan(&tableExists)
+
 			if err != nil {
-				return fmt.Errorf("failed to create initial revision: %w", err)
+				return fmt.Errorf("failed to check if product_revisions table exists: %w", err)
+			}
+
+			if tableExists {
+				// Create initial revision
+				editSummary := "Initial product version (approved edit)"
+				err = r.createProductRevisionTx(tx, product.ID, 1, &edit.UserID, &editSummary, nil, &product)
+				if err != nil {
+					return fmt.Errorf("failed to create initial revision: %w", err)
+				}
 			}
 
 			// Insert category and chain relationships
@@ -904,10 +961,25 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				editSummary = fmt.Sprintf("Updated %s", strings.Join(changedFields, ", "))
 			}
 
-			// Create new revision with transaction
-			err = r.createProductRevisionTx(tx, edit.EntityID, newProduct.CurrentRevisionNumber, &edit.UserID, &editSummary, &changes, &newProduct)
+			// Check if product_revisions table exists before creating revision
+			var tableExists bool
+			err = tx.QueryRow(`
+				SELECT EXISTS (
+					SELECT 1 FROM information_schema.tables 
+					WHERE table_name = 'product_revisions' AND table_schema = 'public'
+				)
+			`).Scan(&tableExists)
+
 			if err != nil {
-				return fmt.Errorf("failed to create revision: %w", err)
+				return fmt.Errorf("failed to check if product_revisions table exists: %w", err)
+			}
+
+			if tableExists {
+				// Create new revision with transaction
+				err = r.createProductRevisionTx(tx, edit.EntityID, newProduct.CurrentRevisionNumber, &edit.UserID, &editSummary, &changes, &newProduct)
+				if err != nil {
+					return fmt.Errorf("failed to create revision: %w", err)
+				}
 			}
 
 			// Update the product with new data
@@ -1202,14 +1274,15 @@ func (r *PostgresRepository) createProductRevisionTx(tx *sql.Tx, productID strin
 		}
 	}
 
-	// Insert revision
-	revisionID := generateID()
-	_, err = tx.Exec(`
-		INSERT INTO product_revisions (id, product_id, revision_number, editor_id, edit_summary, diff_data, product_data, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	// Insert revision - let the database generate the ID with DEFAULT gen_random_uuid()
+	var revisionID string
+	err = tx.QueryRow(`
+		INSERT INTO product_revisions (product_id, revision_number, editor_id, edit_summary, diff_data, product_data)
+		VALUES ($1, $2, $3, $4, $5, $6)
+		RETURNING id
 	`,
-		revisionID, productID, revisionNumber, editorID, editSummary, diffData, productJSON, time.Now(),
-	)
+		productID, revisionNumber, editorID, editSummary, diffData, productJSON,
+	).Scan(&revisionID)
 
 	if err != nil {
 		return fmt.Errorf("failed to insert revision: %w", err)
@@ -1219,10 +1292,10 @@ func (r *PostgresRepository) createProductRevisionTx(tx *sql.Tx, productID strin
 	if changes != nil {
 		for _, change := range *changes {
 			_, err = tx.Exec(`
-				INSERT INTO product_field_changes (id, revision_id, field_name, old_value, new_value, change_type)
-				VALUES ($1, $2, $3, $4, $5, $6)
+				INSERT INTO product_field_changes (revision_id, field_name, old_value, new_value, change_type)
+				VALUES ($1, $2, $3, $4, $5)
 			`,
-				generateID(), revisionID, change.FieldName, change.OldValue, change.NewValue, change.ChangeType,
+				revisionID, change.FieldName, change.OldValue, change.NewValue, change.ChangeType,
 			)
 			if err != nil {
 				return fmt.Errorf("failed to insert field change: %w", err)
