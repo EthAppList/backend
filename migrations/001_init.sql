@@ -115,6 +115,7 @@ DROP TRIGGER IF EXISTS update_chains_updated_at ON chains;
 CREATE TRIGGER update_chains_updated_at BEFORE UPDATE ON chains FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
 
 -- Insert some default chains using name as ID (idempotent)
+-- Use ON CONFLICT on name to handle existing chains with different IDs
 INSERT INTO chains (id, name, icon) VALUES 
 ('Ethereum', 'Ethereum', 'https://cryptologos.cc/logos/ethereum-eth-logo.png'),
 ('Polygon', 'Polygon', 'https://cryptologos.cc/logos/polygon-matic-logo.png'),
@@ -123,9 +124,12 @@ INSERT INTO chains (id, name, icon) VALUES
 ('Arbitrum', 'Arbitrum', 'https://cryptologos.cc/logos/arbitrum-arb-logo.png'),
 ('Optimism', 'Optimism', 'https://cryptologos.cc/logos/optimism-ethereum-op-logo.png'),
 ('Avalanche', 'Avalanche', 'https://cryptologos.cc/logos/avalanche-avax-logo.png')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET 
+    id = EXCLUDED.id,
+    icon = EXCLUDED.icon;
 
 -- Insert some example categories using name as ID (idempotent)
+-- Use ON CONFLICT on name to handle existing categories with different IDs
 INSERT INTO categories (id, name, description) VALUES 
 ('DeFi', 'DeFi', 'Decentralized Finance applications'),
 ('NFT', 'NFT', 'NFT marketplaces and tools'),
@@ -134,7 +138,9 @@ INSERT INTO categories (id, name, description) VALUES
 ('Social', 'Social', 'Social platforms built on blockchain'),
 ('DAO', 'DAO', 'Decentralized Autonomous Organizations and governance'),
 ('Privacy', 'Privacy', 'Privacy-focused applications')
-ON CONFLICT (id) DO NOTHING;
+ON CONFLICT (name) DO UPDATE SET 
+    id = EXCLUDED.id,
+    description = EXCLUDED.description;
 
 -- Create row level security policies (idempotent)
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
