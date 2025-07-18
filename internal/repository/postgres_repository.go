@@ -1265,13 +1265,16 @@ func (r *PostgresRepository) createProductRevisionTx(tx *sql.Tx, productID strin
 		return fmt.Errorf("failed to marshal product data: %w", err)
 	}
 
-	// Create diff data if changes are provided
-	var diffData []byte
-	if changes != nil {
-		diffData, err = json.Marshal(changes)
+	// Handle diff data properly - use NULL if no changes
+	var diffData interface{}
+	if changes != nil && len(*changes) > 0 {
+		diffDataBytes, err := json.Marshal(changes)
 		if err != nil {
 			return fmt.Errorf("failed to marshal diff data: %w", err)
 		}
+		diffData = string(diffDataBytes)
+	} else {
+		diffData = nil // This will be inserted as NULL
 	}
 
 	// Insert revision - let the database generate the ID with DEFAULT gen_random_uuid()
@@ -1281,7 +1284,7 @@ func (r *PostgresRepository) createProductRevisionTx(tx *sql.Tx, productID strin
 		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id
 	`,
-		productID, revisionNumber, editorID, editSummary, diffData, productJSON,
+		productID, revisionNumber, editorID, editSummary, diffData, string(productJSON),
 	).Scan(&revisionID)
 
 	if err != nil {
@@ -1289,7 +1292,7 @@ func (r *PostgresRepository) createProductRevisionTx(tx *sql.Tx, productID strin
 	}
 
 	// Insert field changes if provided
-	if changes != nil {
+	if changes != nil && len(*changes) > 0 {
 		for _, change := range *changes {
 			_, err = tx.Exec(`
 				INSERT INTO product_field_changes (revision_id, field_name, old_value, new_value, change_type)
