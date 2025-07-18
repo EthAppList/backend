@@ -7,6 +7,9 @@ ALTER TABLE products ADD COLUMN IF NOT EXISTS decent_score DECIMAL(3,2) DEFAULT 
 ALTER TABLE products ADD COLUMN IF NOT EXISTS vibes_score DECIMAL(3,2) DEFAULT 0.50;
 
 -- Update get_top_products_by_period function to include new fields (idempotent)
+-- Drop the function first to allow parameter name changes
+DROP FUNCTION IF EXISTS get_top_products_by_period(TEXT, TEXT, TEXT, INTEGER, INTEGER);
+
 CREATE OR REPLACE FUNCTION get_top_products_by_period(
     period TEXT, -- 'day', 'week', 'month', 'year', 'all'
     category_filter TEXT DEFAULT NULL,
