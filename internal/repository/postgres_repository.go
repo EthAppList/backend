@@ -211,6 +211,11 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	// Insert category relationships
 	if len(product.Categories) > 0 {
 		for _, category := range product.Categories {
+			// Skip empty or invalid category names
+			if strings.TrimSpace(category.Name) == "" {
+				continue
+			}
+
 			// Ensure category exists (create if new) and get its ID
 			categoryID, err := r.ensureCategoryExists(tx, category.Name)
 			if err != nil {
@@ -230,6 +235,11 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	// Insert chain relationships
 	if len(product.Chains) > 0 {
 		for _, chain := range product.Chains {
+			// Skip empty or invalid chain names
+			if strings.TrimSpace(chain.Name) == "" {
+				continue
+			}
+
 			// Ensure chain exists (create if new) and get its ID
 			chainID, err := r.ensureChainExists(tx, chain.Name)
 			if err != nil {
@@ -921,6 +931,12 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			if len(product.Categories) > 0 {
 				for _, category := range product.Categories {
+					// Skip empty or invalid category names
+					if strings.TrimSpace(category.Name) == "" {
+						log.Printf("ApproveEdit: Skipping empty category name")
+						continue
+					}
+
 					// Ensure category exists (create if new) and get its ID
 					categoryID, err := r.ensureCategoryExists(tx, category.Name)
 					if err != nil {
@@ -942,6 +958,12 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			if len(product.Chains) > 0 {
 				for _, chain := range product.Chains {
+					// Skip empty or invalid chain names
+					if strings.TrimSpace(chain.Name) == "" {
+						log.Printf("ApproveEdit: Skipping empty chain name")
+						continue
+					}
+
 					// Ensure chain exists (create if new) and get its ID
 					chainID, err := r.ensureChainExists(tx, chain.Name)
 					if err != nil {
@@ -1078,6 +1100,11 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			}
 			if len(newProduct.Categories) > 0 {
 				for _, category := range newProduct.Categories {
+					// Skip empty or invalid category names
+					if strings.TrimSpace(category.Name) == "" {
+						continue
+					}
+
 					// Ensure category exists (create if new) and get its ID
 					categoryID, err := r.ensureCategoryExists(tx, category.Name)
 					if err != nil {
@@ -1100,6 +1127,11 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			}
 			if len(newProduct.Chains) > 0 {
 				for _, chain := range newProduct.Chains {
+					// Skip empty or invalid chain names
+					if strings.TrimSpace(chain.Name) == "" {
+						continue
+					}
+
 					// Ensure chain exists (create if new) and get its ID
 					chainID, err := r.ensureChainExists(tx, chain.Name)
 					if err != nil {
