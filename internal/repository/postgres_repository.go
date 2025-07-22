@@ -345,7 +345,7 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 	return product, nil
 }
 
-// GetProductByIDAdmin gets ANY product by its ID (admin API - includes pending)
+// GetProductByIDAdmin gets ANY product by its ID (for internal use - not for API endpoints)
 func (r *PostgresRepository) GetProductByIDAdmin(id string) (*models.Product, error) {
 	query := `
 		SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
@@ -414,6 +414,92 @@ func (r *PostgresRepository) GetProductByIDAdmin(id string) (*models.Product, er
 		return nil, err
 	}
 	product.UpvoteCount = upvoteCount
+
+	return product, nil
+}
+
+// GetProductWithPendingEdits gets a product with pending edits applied (for admin review)
+func (r *PostgresRepository) GetProductWithPendingEdits(id string) (*models.Product, error) {
+	// First check if there's a pending creation for this ID
+	var pendingCreateData string
+	err := r.db.QueryRow(`
+		SELECT change_data FROM pending_edits 
+		WHERE entity_id = $1 AND entity_type = 'product' AND change_type = 'create' AND status = 'pending'
+		ORDER BY created_at DESC 
+		LIMIT 1
+	`, id).Scan(&pendingCreateData)
+
+	if err == nil {
+		// This is a pending creation - return the data from the pending edit
+		var product models.Product
+		err = json.Unmarshal([]byte(pendingCreateData), &product)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal pending creation data: %w", err)
+		}
+		return &product, nil
+	}
+
+	// Not a pending creation, so get the existing product
+	product, err := r.GetProductByIDAdmin(id)
+	if err != nil {
+		return nil, err
+	}
+
+	// Check for pending edits and apply them
+	var pendingEditData string
+	err = r.db.QueryRow(`
+		SELECT change_data FROM pending_edits 
+		WHERE entity_id = $1 AND entity_type = 'product' AND change_type = 'update' AND status = 'pending'
+		ORDER BY created_at DESC 
+		LIMIT 1
+	`, id).Scan(&pendingEditData)
+
+	if err == nil {
+		// Apply pending edits
+		var pendingProduct models.Product
+		err = json.Unmarshal([]byte(pendingEditData), &pendingProduct)
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal pending edit data: %w", err)
+		}
+
+		// Merge pending changes into the existing product
+		if pendingProduct.Title != "" {
+			product.Title = pendingProduct.Title
+		}
+		if pendingProduct.ShortDesc != "" {
+			product.ShortDesc = pendingProduct.ShortDesc
+		}
+		if pendingProduct.LongDesc != "" {
+			product.LongDesc = pendingProduct.LongDesc
+		}
+		if pendingProduct.LogoURL != "" {
+			product.LogoURL = pendingProduct.LogoURL
+		}
+		if pendingProduct.WebsiteURL != nil {
+			product.WebsiteURL = pendingProduct.WebsiteURL
+		}
+		if pendingProduct.GitHubURL != nil {
+			product.GitHubURL = pendingProduct.GitHubURL
+		}
+		if pendingProduct.DocsURL != nil {
+			product.DocsURL = pendingProduct.DocsURL
+		}
+		if pendingProduct.AuditReports != nil {
+			product.AuditReports = pendingProduct.AuditReports
+		}
+		if pendingProduct.MarkdownContent != "" {
+			product.MarkdownContent = pendingProduct.MarkdownContent
+		}
+		if pendingProduct.AnalyticsList != nil {
+			product.AnalyticsList = pendingProduct.AnalyticsList
+		}
+		if pendingProduct.Categories != nil {
+			product.Categories = pendingProduct.Categories
+		}
+		if pendingProduct.Chains != nil {
+			product.Chains = pendingProduct.Chains
+		}
+	}
 
 	return product, nil
 }

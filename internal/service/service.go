@@ -24,6 +24,7 @@ type DataRepository interface {
 	CreateProduct(product *models.Product) error
 	GetProductByID(id string) (*models.Product, error)
 	GetProductByIDAdmin(id string) (*models.Product, error)
+	GetProductWithPendingEdits(id string) (*models.Product, error)
 	GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error)
 	UpdateProduct(product *models.Product) error
 	DeleteAllProducts() error
@@ -114,6 +115,11 @@ func (s *Service) GetProductAdmin(id string) (*models.Product, error) {
 	return s.repo.GetProductByIDAdmin(id)
 }
 
+// GetProductWithPendingEdits returns a product with pending edits applied (for admin review)
+func (s *Service) GetProductWithPendingEdits(id string) (*models.Product, error) {
+	return s.repo.GetProductWithPendingEdits(id)
+}
+
 // SubmitProduct creates a new product submission for admin review
 func (s *Service) SubmitProduct(product *models.Product, userWallet string) error {
 	// Generate a temporary ID for the product if not provided
@@ -158,8 +164,8 @@ func (s *Service) SubmitProduct(product *models.Product, userWallet string) erro
 
 // SubmitProductEdit submits edits to an existing product for admin review
 func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Product, userID string, userWallet string) error {
-	// Ensure the product exists
-	existingProduct, err := s.repo.GetProductByID(productID)
+	// Ensure the product exists (use admin method to find any product, approved or not)
+	existingProduct, err := s.repo.GetProductByIDAdmin(productID)
 	if err != nil {
 		return fmt.Errorf("product not found: %w", err)
 	}

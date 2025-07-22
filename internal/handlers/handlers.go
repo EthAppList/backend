@@ -198,12 +198,12 @@ func (h *Handler) GetProduct(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(product)
 }
 
-// GetProductAdmin handles getting ANY product including pending (admin API)
+// GetProductAdmin handles getting product with pending edits for admin review
 func (h *Handler) GetProductAdmin(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
-	product, err := h.svc.GetProductAdmin(id)
+	product, err := h.svc.GetProductWithPendingEdits(id)
 	if err != nil {
 		http.Error(w, "Failed to get product: "+err.Error(), http.StatusNotFound)
 		return
