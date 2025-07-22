@@ -1,5 +1,19 @@
 -- Rename decent_score to overall_score (idempotent)
-ALTER TABLE products RENAME COLUMN decent_score TO overall_score;
+-- Only rename if decent_score exists and overall_score doesn't exist
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'products' 
+        AND column_name = 'decent_score'
+    ) AND NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'products' 
+        AND column_name = 'overall_score'
+    ) THEN
+        ALTER TABLE products RENAME COLUMN decent_score TO overall_score;
+    END IF;
+END $$;
 
 -- Update the get_top_products_by_period function to use overall_score instead of decent_score
 DROP FUNCTION IF EXISTS get_top_products_by_period(TEXT, TEXT, TEXT, INTEGER, INTEGER);
