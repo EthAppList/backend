@@ -144,16 +144,16 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	// Insert product
 	query := `
 		INSERT INTO products (
-			id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-			approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
-			current_revision_number, last_editor_id, created_at, updated_at
+			id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
+			markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
+			security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
 		)
 		VALUES (
-			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
 		)
-		RETURNING id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-			approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
-			current_revision_number, last_editor_id, created_at, updated_at
+		RETURNING id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
+			markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
+			security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
 	`
 
 	err = tx.QueryRow(
@@ -163,6 +163,10 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 		product.ShortDesc,
 		product.LongDesc,
 		product.LogoURL,
+		product.WebsiteURL,
+		product.GitHubURL,
+		product.DocsURL,
+		pq.Array(product.AuditReports),
 		product.MarkdownContent,
 		product.SubmitterID,
 		product.Approved,
@@ -182,6 +186,10 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 		&product.ShortDesc,
 		&product.LongDesc,
 		&product.LogoURL,
+		&product.WebsiteURL,
+		&product.GitHubURL,
+		&product.DocsURL,
+		pq.Array(&product.AuditReports),
 		&product.MarkdownContent,
 		&product.SubmitterID,
 		&product.Approved,
@@ -267,9 +275,9 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 // GetProductByID gets a product by its ID
 func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) {
 	query := `
-		SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-		       approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
-		       current_revision_number, last_editor_id, created_at, updated_at
+		SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
+		       markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
+		       security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
 		FROM products
 		WHERE id = $1
 	`
@@ -281,6 +289,10 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 		&product.ShortDesc,
 		&product.LongDesc,
 		&product.LogoURL,
+		&product.WebsiteURL,
+		&product.GitHubURL,
+		&product.DocsURL,
+		pq.Array(&product.AuditReports),
 		&product.MarkdownContent,
 		&product.SubmitterID,
 		&product.Approved,
@@ -337,8 +349,8 @@ func (r *PostgresRepository) GetProducts(
 
 	// Base query for fetching products
 	query := `
-		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, 
-               p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
+		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.website_url, p.github_url, 
+               p.docs_url, p.audit_reports, p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
                p.analytics_list, p.security_score, p.ux_score, p.overall_score, p.vibes_score,
                p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at
 		FROM products p
@@ -413,6 +425,10 @@ func (r *PostgresRepository) GetProducts(
 			&product.ShortDesc,
 			&product.LongDesc,
 			&product.LogoURL,
+			&product.WebsiteURL,
+			&product.GitHubURL,
+			&product.DocsURL,
+			pq.Array(&product.AuditReports),
 			&product.MarkdownContent,
 			&product.SubmitterID,
 			&product.Approved,
@@ -869,12 +885,12 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// Insert the product using the main logic
 			_, err = tx.Exec(`
 				INSERT INTO products (
-					id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-					approved, is_verified, analytics_list, security_score, ux_score, overall_score, vibes_score,
-					current_revision_number, last_editor_id, created_at, updated_at
+					id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
+					markdown_content, submitter_id, approved, is_verified, analytics_list, security_score, 
+					ux_score, overall_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
 				)
 				VALUES (
-					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
+					$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22
 				)
 			`,
 				product.ID,
@@ -882,6 +898,10 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				product.ShortDesc,
 				product.LongDesc,
 				product.LogoURL,
+				product.WebsiteURL,
+				product.GitHubURL,
+				product.DocsURL,
+				pq.Array(product.AuditReports),
 				product.MarkdownContent,
 				product.SubmitterID,
 				product.Approved,
@@ -993,9 +1013,9 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// Get current product state for diff calculation
 			var currentProduct models.Product
 			err = tx.QueryRow(`
-						SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-		       approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
-		       current_revision_number, last_editor_id, created_at, updated_at
+				SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
+				       markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
+				       security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
 				FROM products WHERE id = $1
 			`, edit.EntityID).Scan(
 				&currentProduct.ID,
@@ -1003,6 +1023,10 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				&currentProduct.ShortDesc,
 				&currentProduct.LongDesc,
 				&currentProduct.LogoURL,
+				&currentProduct.WebsiteURL,
+				&currentProduct.GitHubURL,
+				&currentProduct.DocsURL,
+				pq.Array(&currentProduct.AuditReports),
 				&currentProduct.MarkdownContent,
 				&currentProduct.SubmitterID,
 				&currentProduct.Approved,
@@ -1072,16 +1096,21 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// Update the product with new data
 			_, err = tx.Exec(`
 				UPDATE products
-				SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, markdown_content = $5, 
-					is_verified = $6, analytics_list = $7, security_score = $8, ux_score = $9, 
-					overall_score = $10, vibes_score = $11, current_revision_number = $12, 
-					last_editor_id = $13, updated_at = $14, approved = true
-				WHERE id = $15
+				SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, website_url = $5, 
+					github_url = $6, docs_url = $7, audit_reports = $8, markdown_content = $9, 
+					is_verified = $10, analytics_list = $11, security_score = $12, ux_score = $13, 
+					overall_score = $14, vibes_score = $15, current_revision_number = $16, 
+					last_editor_id = $17, updated_at = $18, approved = true
+				WHERE id = $19
 			`,
 				newProduct.Title,
 				newProduct.ShortDesc,
 				newProduct.LongDesc,
 				newProduct.LogoURL,
+				newProduct.WebsiteURL,
+				newProduct.GitHubURL,
+				newProduct.DocsURL,
+				pq.Array(newProduct.AuditReports),
 				newProduct.MarkdownContent,
 				newProduct.IsVerified,
 				pq.Array(newProduct.AnalyticsList),
@@ -1393,16 +1422,21 @@ func (r *PostgresRepository) CreateProductRevision(productID string, editorID *s
 	// Update the product with new data and revision number
 	_, err = tx.Exec(`
 		UPDATE products
-		SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, markdown_content = $5, 
-			is_verified = $6, analytics_list = $7, security_score = $8, ux_score = $9, 
-			overall_score = $10, vibes_score = $11, current_revision_number = $12, 
-			last_editor_id = $13, updated_at = $14
-		WHERE id = $15
+		SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, website_url = $5,
+			github_url = $6, docs_url = $7, audit_reports = $8, markdown_content = $9, 
+			is_verified = $10, analytics_list = $11, security_score = $12, ux_score = $13, 
+			overall_score = $14, vibes_score = $15, current_revision_number = $16, 
+			last_editor_id = $17, updated_at = $18
+		WHERE id = $19
 	`,
 		newProductData.Title,
 		newProductData.ShortDesc,
 		newProductData.LongDesc,
 		newProductData.LogoURL,
+		newProductData.WebsiteURL,
+		newProductData.GitHubURL,
+		newProductData.DocsURL,
+		pq.Array(newProductData.AuditReports),
 		newProductData.MarkdownContent,
 		newProductData.IsVerified,
 		pq.Array(newProductData.AnalyticsList),
@@ -1693,11 +1727,22 @@ func (r *PostgresRepository) calculateProductDifferences(from, to *models.Produc
 		}
 	}
 
+	// Helper function to safely dereference string pointers
+	safeString := func(s *string) string {
+		if s == nil {
+			return ""
+		}
+		return *s
+	}
+
 	// Compare all fields
 	addChange("title", from.Title, to.Title)
 	addChange("short_desc", from.ShortDesc, to.ShortDesc)
 	addChange("long_desc", from.LongDesc, to.LongDesc)
 	addChange("logo_url", from.LogoURL, to.LogoURL)
+	addChange("website_url", safeString(from.WebsiteURL), safeString(to.WebsiteURL))
+	addChange("github_url", safeString(from.GitHubURL), safeString(to.GitHubURL))
+	addChange("docs_url", safeString(from.DocsURL), safeString(to.DocsURL))
 	addChange("markdown_content", from.MarkdownContent, to.MarkdownContent)
 	addChange("security_score", fmt.Sprintf("%.2f", from.SecurityScore), fmt.Sprintf("%.2f", to.SecurityScore))
 	addChange("ux_score", fmt.Sprintf("%.2f", from.UXScore), fmt.Sprintf("%.2f", to.UXScore))
@@ -1712,6 +1757,10 @@ func (r *PostgresRepository) calculateProductDifferences(from, to *models.Produc
 	fromAnalytics, _ := json.Marshal(from.AnalyticsList)
 	toAnalytics, _ := json.Marshal(to.AnalyticsList)
 	addChange("analytics_list", string(fromAnalytics), string(toAnalytics))
+
+	fromAuditReports, _ := json.Marshal(from.AuditReports)
+	toAuditReports, _ := json.Marshal(to.AuditReports)
+	addChange("audit_reports", string(fromAuditReports), string(toAuditReports))
 
 	return changes
 }
@@ -1813,11 +1862,11 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 	// Update the product record
 	query := `
 		UPDATE products 
-		SET title = $2, short_desc = $3, long_desc = $4, logo_url = $5, 
-		    markdown_content = $6, approved = $7, is_verified = $8, 
-		    analytics_list = $9, security_score = $10, ux_score = $11, 
-		    overall_score = $12, vibes_score = $13, current_revision_number = $14,
-		    last_editor_id = $15, updated_at = NOW()
+		SET title = $2, short_desc = $3, long_desc = $4, logo_url = $5, website_url = $6,
+		    github_url = $7, docs_url = $8, audit_reports = $9, markdown_content = $10, 
+		    approved = $11, is_verified = $12, analytics_list = $13, security_score = $14, 
+		    ux_score = $15, overall_score = $16, vibes_score = $17, current_revision_number = $18,
+		    last_editor_id = $19, updated_at = NOW()
 		WHERE id = $1
 	`
 
@@ -1828,6 +1877,10 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 		product.ShortDesc,
 		product.LongDesc,
 		product.LogoURL,
+		product.WebsiteURL,
+		product.GitHubURL,
+		product.DocsURL,
+		pq.Array(product.AuditReports),
 		product.MarkdownContent,
 		product.Approved,
 		product.IsVerified,
