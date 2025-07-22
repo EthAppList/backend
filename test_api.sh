@@ -136,7 +136,7 @@ run_tests() {
     "analytics_list": ["<iframe src=\"https://example.com/analytics1\"></iframe>", "<iframe src=\"https://example.com/analytics2\"></iframe>"],
     "security_score": 0.75,
     "ux_score": 0.85,
-    "decent_score": 0.65,
+    "overall_score": 0.65,
     "vibes_score": 0.90,
     "categories": [{"id": "1"}],
     "chains": [{"id": "1"}]

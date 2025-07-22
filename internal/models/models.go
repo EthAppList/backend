@@ -30,9 +30,9 @@ type Product struct {
 	Approved              bool      `json:"approved" db:"approved"`
 	IsVerified            bool      `json:"is_verified" db:"is_verified"`
 	AnalyticsList         []string  `json:"analytics_list" db:"analytics_list"`
+	OverallScore          float64   `json:"overall_score" db:"overall_score"`
 	SecurityScore         float64   `json:"security_score" db:"security_score"`
 	UXScore               float64   `json:"ux_score" db:"ux_score"`
-	DecentScore           float64   `json:"decent_score" db:"decent_score"`
 	VibesScore            float64   `json:"vibes_score" db:"vibes_score"`
 	CurrentRevisionNumber int       `json:"current_revision_number" db:"current_revision_number"`
 	LastEditorID          *string   `json:"last_editor_id" db:"last_editor_id"`

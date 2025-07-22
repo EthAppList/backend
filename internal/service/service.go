@@ -376,11 +376,11 @@ func calculateProductChanges(oldProduct, newProduct *models.Product) []models.Pr
 		})
 	}
 
-	if oldProduct.DecentScore != newProduct.DecentScore {
-		oldValue := fmt.Sprintf("%.2f", oldProduct.DecentScore)
-		newValue := fmt.Sprintf("%.2f", newProduct.DecentScore)
+	if oldProduct.OverallScore != newProduct.OverallScore {
+		oldValue := fmt.Sprintf("%.2f", oldProduct.OverallScore)
+		newValue := fmt.Sprintf("%.2f", newProduct.OverallScore)
 		changes = append(changes, models.ProductFieldChange{
-			FieldName:  "decent_score",
+			FieldName:  "overall_score",
 			OldValue:   &oldValue,
 			NewValue:   &newValue,
 			ChangeType: "modified",

@@ -145,14 +145,14 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	query := `
 		INSERT INTO products (
 			id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-			approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+			approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
 			current_revision_number, last_editor_id, created_at, updated_at
 		)
 		VALUES (
 			$1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
 		)
 		RETURNING id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-			approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+			approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
 			current_revision_number, last_editor_id, created_at, updated_at
 	`
 
@@ -168,9 +168,9 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 		product.Approved,
 		product.IsVerified,
 		pq.Array(product.AnalyticsList),
+		product.OverallScore,
 		product.SecurityScore,
 		product.UXScore,
-		product.DecentScore,
 		product.VibesScore,
 		product.CurrentRevisionNumber,
 		product.SubmitterID, // last_editor_id is initially the submitter
@@ -187,9 +187,9 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 		&product.Approved,
 		&product.IsVerified,
 		pq.Array(&product.AnalyticsList),
+		&product.OverallScore,
 		&product.SecurityScore,
 		&product.UXScore,
-		&product.DecentScore,
 		&product.VibesScore,
 		&product.CurrentRevisionNumber,
 		&product.LastEditorID,
@@ -268,7 +268,7 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) {
 	query := `
 		SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-		       approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+		       approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
 		       current_revision_number, last_editor_id, created_at, updated_at
 		FROM products
 		WHERE id = $1
@@ -286,9 +286,9 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 		&product.Approved,
 		&product.IsVerified,
 		pq.Array(&product.AnalyticsList),
+		&product.OverallScore,
 		&product.SecurityScore,
 		&product.UXScore,
-		&product.DecentScore,
 		&product.VibesScore,
 		&product.CurrentRevisionNumber,
 		&product.LastEditorID,
@@ -339,7 +339,7 @@ func (r *PostgresRepository) GetProducts(
 	query := `
 		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, 
                p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
-               p.analytics_list, p.security_score, p.ux_score, p.decent_score, p.vibes_score,
+               p.analytics_list, p.security_score, p.ux_score, p.overall_score, p.vibes_score,
                p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at
 		FROM products p
 	`
@@ -420,7 +420,7 @@ func (r *PostgresRepository) GetProducts(
 			pq.Array(&product.AnalyticsList),
 			&product.SecurityScore,
 			&product.UXScore,
-			&product.DecentScore,
+			&product.OverallScore,
 			&product.VibesScore,
 			&product.CurrentRevisionNumber,
 			&product.LastEditorID,
@@ -851,8 +851,8 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			if product.UXScore == 0 {
 				product.UXScore = 0.5
 			}
-			if product.DecentScore == 0 {
-				product.DecentScore = 0.5
+			if product.OverallScore == 0 {
+				product.OverallScore = 0.5
 			}
 			if product.VibesScore == 0 {
 				product.VibesScore = 0.5
@@ -864,7 +864,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			_, err = tx.Exec(`
 				INSERT INTO products (
 					id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-					approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
+					approved, is_verified, analytics_list, security_score, ux_score, overall_score, vibes_score,
 					current_revision_number, last_editor_id, created_at, updated_at
 				)
 				VALUES (
@@ -883,7 +883,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				pq.Array(product.AnalyticsList),
 				product.SecurityScore,
 				product.UXScore,
-				product.DecentScore,
+				product.OverallScore,
 				product.VibesScore,
 				product.CurrentRevisionNumber,
 				edit.UserID, // last_editor_id is the approver
@@ -987,9 +987,9 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 			// Get current product state for diff calculation
 			var currentProduct models.Product
 			err = tx.QueryRow(`
-				SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
-					   approved, is_verified, analytics_list, security_score, ux_score, decent_score, vibes_score,
-					   current_revision_number, last_editor_id, created_at, updated_at
+						SELECT id, title, short_desc, long_desc, logo_url, markdown_content, submitter_id, 
+		       approved, is_verified, analytics_list, overall_score, security_score, ux_score, vibes_score,
+		       current_revision_number, last_editor_id, created_at, updated_at
 				FROM products WHERE id = $1
 			`, edit.EntityID).Scan(
 				&currentProduct.ID,
@@ -1002,9 +1002,9 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				&currentProduct.Approved,
 				&currentProduct.IsVerified,
 				pq.Array(&currentProduct.AnalyticsList),
+				&currentProduct.OverallScore,
 				&currentProduct.SecurityScore,
 				&currentProduct.UXScore,
-				&currentProduct.DecentScore,
 				&currentProduct.VibesScore,
 				&currentProduct.CurrentRevisionNumber,
 				&currentProduct.LastEditorID,
@@ -1068,7 +1068,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				UPDATE products
 				SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, markdown_content = $5, 
 					is_verified = $6, analytics_list = $7, security_score = $8, ux_score = $9, 
-					decent_score = $10, vibes_score = $11, current_revision_number = $12, 
+					overall_score = $10, vibes_score = $11, current_revision_number = $12, 
 					last_editor_id = $13, updated_at = $14, approved = true
 				WHERE id = $15
 			`,
@@ -1081,7 +1081,7 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 				pq.Array(newProduct.AnalyticsList),
 				newProduct.SecurityScore,
 				newProduct.UXScore,
-				newProduct.DecentScore,
+				newProduct.OverallScore,
 				newProduct.VibesScore,
 				newProduct.CurrentRevisionNumber,
 				edit.UserID,
@@ -1389,7 +1389,7 @@ func (r *PostgresRepository) CreateProductRevision(productID string, editorID *s
 		UPDATE products
 		SET title = $1, short_desc = $2, long_desc = $3, logo_url = $4, markdown_content = $5, 
 			is_verified = $6, analytics_list = $7, security_score = $8, ux_score = $9, 
-			decent_score = $10, vibes_score = $11, current_revision_number = $12, 
+			overall_score = $10, vibes_score = $11, current_revision_number = $12, 
 			last_editor_id = $13, updated_at = $14
 		WHERE id = $15
 	`,
@@ -1402,7 +1402,7 @@ func (r *PostgresRepository) CreateProductRevision(productID string, editorID *s
 		pq.Array(newProductData.AnalyticsList),
 		newProductData.SecurityScore,
 		newProductData.UXScore,
-		newProductData.DecentScore,
+		newProductData.OverallScore,
 		newProductData.VibesScore,
 		newRevision,
 		editorID,
@@ -1695,7 +1695,7 @@ func (r *PostgresRepository) calculateProductDifferences(from, to *models.Produc
 	addChange("markdown_content", from.MarkdownContent, to.MarkdownContent)
 	addChange("security_score", fmt.Sprintf("%.2f", from.SecurityScore), fmt.Sprintf("%.2f", to.SecurityScore))
 	addChange("ux_score", fmt.Sprintf("%.2f", from.UXScore), fmt.Sprintf("%.2f", to.UXScore))
-	addChange("decent_score", fmt.Sprintf("%.2f", from.DecentScore), fmt.Sprintf("%.2f", to.DecentScore))
+	addChange("overall_score", fmt.Sprintf("%.2f", from.OverallScore), fmt.Sprintf("%.2f", to.OverallScore))
 	addChange("vibes_score", fmt.Sprintf("%.2f", from.VibesScore), fmt.Sprintf("%.2f", to.VibesScore))
 
 	// Compare boolean fields
@@ -1810,7 +1810,7 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 		SET title = $2, short_desc = $3, long_desc = $4, logo_url = $5, 
 		    markdown_content = $6, approved = $7, is_verified = $8, 
 		    analytics_list = $9, security_score = $10, ux_score = $11, 
-		    decent_score = $12, vibes_score = $13, current_revision_number = $14,
+		    overall_score = $12, vibes_score = $13, current_revision_number = $14,
 		    last_editor_id = $15, updated_at = NOW()
 		WHERE id = $1
 	`
@@ -1828,7 +1828,7 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 		pq.Array(product.AnalyticsList),
 		product.SecurityScore,
 		product.UXScore,
-		product.DecentScore,
+		product.OverallScore,
 		product.VibesScore,
 		product.CurrentRevisionNumber,
 		product.LastEditorID,
