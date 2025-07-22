@@ -816,7 +816,13 @@ func (r *PostgresRepository) ApproveEdit(editID string) error {
 
 			// If entity ID exists, use it; otherwise generate a new one
 			if edit.EntityID != "" {
-				product.ID = edit.EntityID
+				// Remove "pending_" prefix for approved products to generate clean IDs
+				if strings.HasPrefix(edit.EntityID, "pending_") {
+					product.ID = generateID() // Generate clean numeric ID
+					log.Printf("ApproveEdit: Converted pending ID %s to clean ID %s", edit.EntityID, product.ID)
+				} else {
+					product.ID = edit.EntityID
+				}
 			} else {
 				product.ID = generateID()
 			}

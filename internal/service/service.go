@@ -119,6 +119,13 @@ func (s *Service) SubmitProduct(product *models.Product) error {
 	product.Approved = false // Will be set to true when approved
 	product.CurrentRevisionNumber = 1
 
+	// SECURITY: Always set scores to default values (50) regardless of what client sends
+	// This prevents malicious users from injecting high scores via API calls
+	product.SecurityScore = 0.5
+	product.UXScore = 0.5
+	product.OverallScore = 0.5
+	product.VibesScore = 0.5
+
 	// Create a pending edit for admin review instead of creating the product directly
 	_, err := s.repo.CreatePendingEdit(
 		product.SubmitterID,
@@ -299,11 +306,21 @@ func (s *Service) generateJWT(user *models.User) (string, error) {
 }
 
 // UpdateProduct handles direct product updates with edit summaries
-func (s *Service) UpdateProduct(product *models.Product, editorID, editSummary string, minorEdit bool) error {
+func (s *Service) UpdateProduct(product *models.Product, editorID, editSummary string, minorEdit bool, isAdmin bool) error {
 	// Get the current product to compare changes
 	currentProduct, err := s.repo.GetProductByID(product.ID)
 	if err != nil {
 		return err
+	}
+
+	// SECURITY: For non-admin users, preserve existing scores to prevent manipulation
+	// Only admins should be able to modify product scores
+	if !isAdmin {
+		// Non-admin users cannot modify scores - preserve current values
+		product.SecurityScore = currentProduct.SecurityScore
+		product.UXScore = currentProduct.UXScore
+		product.OverallScore = currentProduct.OverallScore
+		product.VibesScore = currentProduct.VibesScore
 	}
 
 	// Calculate field changes between current and updated product

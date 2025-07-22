@@ -617,7 +617,10 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	// Ensure the product ID matches the URL parameter
 	req.Product.ID = productID
 
-	err = h.svc.UpdateProduct(&req.Product, user.ID, req.EditSummary, req.MinorEdit)
+	// Check if user is admin
+	isAdmin := h.svc.IsUserAdmin(user.WalletAddress)
+
+	err = h.svc.UpdateProduct(&req.Product, user.ID, req.EditSummary, req.MinorEdit, isAdmin)
 	if err != nil {
 		http.Error(w, "Failed to update product: "+err.Error(), http.StatusInternalServerError)
 		return
