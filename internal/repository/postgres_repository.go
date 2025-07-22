@@ -494,6 +494,8 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 	// Initialize as empty slice to ensure it's never nil
 	categories := []models.Category{}
 
+	log.Printf("DEBUG: Loading categories for product %s", product.ID)
+
 	query := `
 		SELECT c.id, c.name, c.description, c.created_at, c.updated_at
 		FROM categories c
@@ -503,6 +505,7 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 
 	rows, err := r.db.Query(query, product.ID)
 	if err != nil {
+		log.Printf("DEBUG: Error querying categories for product %s: %v", product.ID, err)
 		return fmt.Errorf("failed to get product categories: %w", err)
 	}
 	defer rows.Close()
@@ -517,18 +520,24 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 			&category.UpdatedAt,
 		)
 		if err != nil {
+			log.Printf("DEBUG: Error scanning category for product %s: %v", product.ID, err)
 			return fmt.Errorf("failed to scan category: %w", err)
 		}
 		categories = append(categories, category)
+		log.Printf("DEBUG: Added category %s to product %s", category.Name, product.ID)
 	}
 
+	log.Printf("DEBUG: Setting %d categories for product %s", len(categories), product.ID)
 	product.Categories = categories
+	log.Printf("DEBUG: Product categories after assignment: %+v", product.Categories)
 	return nil
 }
 
 func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 	// Initialize as empty slice to ensure it's never nil
 	chains := []models.Chain{}
+
+	log.Printf("DEBUG: Loading chains for product %s", product.ID)
 
 	query := `
 		SELECT c.id, c.name, c.icon, c.created_at, c.updated_at
@@ -539,6 +548,7 @@ func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 
 	rows, err := r.db.Query(query, product.ID)
 	if err != nil {
+		log.Printf("DEBUG: Error querying chains for product %s: %v", product.ID, err)
 		return fmt.Errorf("failed to get product chains: %w", err)
 	}
 	defer rows.Close()
@@ -553,12 +563,16 @@ func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 			&chain.UpdatedAt,
 		)
 		if err != nil {
+			log.Printf("DEBUG: Error scanning chain for product %s: %v", product.ID, err)
 			return fmt.Errorf("failed to scan chain: %w", err)
 		}
 		chains = append(chains, chain)
+		log.Printf("DEBUG: Added chain %s to product %s", chain.Name, product.ID)
 	}
 
+	log.Printf("DEBUG: Setting %d chains for product %s", len(chains), product.ID)
 	product.Chains = chains
+	log.Printf("DEBUG: Product chains after assignment: %+v", product.Chains)
 	return nil
 }
 
