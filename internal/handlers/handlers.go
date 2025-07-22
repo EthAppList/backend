@@ -70,6 +70,13 @@ func RegisterCategoryHandlers(router *mux.Router, svc *service.Service) {
 	protectedRouter.HandleFunc("", h.SubmitCategory).Methods("POST")
 }
 
+// RegisterChainHandlers registers chain-related routes
+func RegisterChainHandlers(router *mux.Router, svc *service.Service) {
+	h := New(svc)
+
+	router.HandleFunc("", h.GetChains).Methods("GET")
+}
+
 // RegisterAdminHandlers registers admin-related routes
 func RegisterAdminHandlers(router *mux.Router, svc *service.Service) {
 	h := New(svc)
@@ -300,6 +307,18 @@ func (h *Handler) GetCategories(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(categories)
+}
+
+// GetChains handles getting all chains
+func (h *Handler) GetChains(w http.ResponseWriter, r *http.Request) {
+	chains, err := h.svc.GetChains()
+	if err != nil {
+		http.Error(w, "Failed to get chains: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(chains)
 }
 
 // SubmitCategory handles category submission

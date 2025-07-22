@@ -209,6 +209,11 @@ go run cmd/server/main.go
   - Request: `{"name": "Category Name", "description": "Description"}`
   - Response: Created category object
 
+### Chains
+
+- `GET /api/chains` - Get all chains
+  - Response: Array of chain objects
+
 ### Admin Endpoints
 
 - `GET /api/admin/pending` - Get pending submissions (admin only)

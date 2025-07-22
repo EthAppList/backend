@@ -250,6 +250,16 @@ Submit a new category.
 
 ---
 
+## Chain Endpoints
+
+### GET `/api/chains`
+Get all blockchain chains.
+
+**Authentication:** None  
+**Response:** Array of chain objects
+
+---
+
 ## Admin Endpoints 🔐
 
 All admin endpoints require admin privileges.

@@ -41,6 +41,9 @@ type DataRepository interface {
 	GetCategories() ([]models.Category, error)
 	CreateCategory(category *models.Category) error
 
+	// Chain methods
+	GetChains() ([]models.Chain, error)
+
 	// Upvote methods
 	UpvoteProduct(userID, productID string) error
 
@@ -203,6 +206,11 @@ func (s *Service) GetCategories() ([]models.Category, error) {
 // SubmitCategory creates a new category
 func (s *Service) SubmitCategory(category *models.Category) error {
 	return s.repo.CreateCategory(category)
+}
+
+// GetChains returns all chains
+func (s *Service) GetChains() ([]models.Chain, error) {
+	return s.repo.GetChains()
 }
 
 // UpvoteProduct adds an upvote to a product

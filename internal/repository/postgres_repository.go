@@ -661,11 +661,13 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 
 	rows, err := r.db.Query(query, product.ID)
 	if err != nil {
+		log.Printf("loadProductCategories: Query failed for product %s: %v", product.ID, err)
 		// Don't return error for missing relationships, just keep empty slice
 		return nil
 	}
 	defer rows.Close()
 
+	categoryCount := 0
 	for rows.Next() {
 		var category models.Category
 		err := rows.Scan(
@@ -676,11 +678,14 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 			&category.UpdatedAt,
 		)
 		if err != nil {
+			log.Printf("loadProductCategories: Failed to scan category for product %s: %v", product.ID, err)
 			return fmt.Errorf("failed to scan category: %w", err)
 		}
 		product.Categories = append(product.Categories, category)
+		categoryCount++
 	}
 
+	log.Printf("loadProductCategories: Loaded %d categories for product %s", categoryCount, product.ID)
 	return nil
 }
 
@@ -697,11 +702,13 @@ func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 
 	rows, err := r.db.Query(query, product.ID)
 	if err != nil {
+		log.Printf("loadProductChains: Query failed for product %s: %v", product.ID, err)
 		// Don't return error for missing relationships, just keep empty slice
 		return nil
 	}
 	defer rows.Close()
 
+	chainCount := 0
 	for rows.Next() {
 		var chain models.Chain
 		err := rows.Scan(
@@ -712,11 +719,14 @@ func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 			&chain.UpdatedAt,
 		)
 		if err != nil {
+			log.Printf("loadProductChains: Failed to scan chain for product %s: %v", product.ID, err)
 			return fmt.Errorf("failed to scan chain: %w", err)
 		}
 		product.Chains = append(product.Chains, chain)
+		chainCount++
 	}
 
+	log.Printf("loadProductChains: Loaded %d chains for product %s", chainCount, product.ID)
 	return nil
 }
 
@@ -916,6 +926,36 @@ func (r *PostgresRepository) CreateCategory(category *models.Category) error {
 	}
 
 	return nil
+}
+
+// GetChains returns all chains
+func (r *PostgresRepository) GetChains() ([]models.Chain, error) {
+	query := `SELECT id, name, icon, created_at, updated_at FROM chains ORDER BY name ASC`
+
+	rows, err := r.db.Query(query)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chains: %w", err)
+	}
+	defer rows.Close()
+
+	chains := []models.Chain{}
+	for rows.Next() {
+		var chain models.Chain
+		err := rows.Scan(
+			&chain.ID,
+			&chain.Name,
+			&chain.Icon,
+			&chain.CreatedAt,
+			&chain.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan chain: %w", err)
+		}
+
+		chains = append(chains, chain)
+	}
+
+	return chains, nil
 }
 
 // UpvoteProduct adds an upvote to a product

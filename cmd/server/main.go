@@ -64,6 +64,10 @@ func main() {
 	categoriesRouter := apiRouter.PathPrefix("/categories").Subrouter()
 	handlers.RegisterCategoryHandlers(categoriesRouter, svc)
 
+	// Chain routes
+	chainsRouter := apiRouter.PathPrefix("/chains").Subrouter()
+	handlers.RegisterChainHandlers(chainsRouter, svc)
+
 	// User routes
 	userRouter := apiRouter.PathPrefix("/user").Subrouter()
 	handlers.RegisterUserHandlers(userRouter, svc)

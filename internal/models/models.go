@@ -44,8 +44,8 @@ type Product struct {
 	UpdatedAt             time.Time `json:"updated_at" db:"updated_at"`
 
 	// Relationships
-	Categories  []Category `json:"categories,omitempty" db:"-"`
-	Chains      []Chain    `json:"chains,omitempty" db:"-"`
+	Categories  []Category `json:"categories" db:"-"`
+	Chains      []Chain    `json:"chains" db:"-"`
 	UpvoteCount int        `json:"upvote_count,omitempty" db:"-"`
 	Submitter   *User      `json:"submitter,omitempty" db:"-"`
 	LastEditor  *User      `json:"last_editor,omitempty" db:"-"`
