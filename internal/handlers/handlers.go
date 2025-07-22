@@ -51,6 +51,7 @@ func RegisterProductHandlers(router *mux.Router, svc *service.Service) {
 	protectedRouter.HandleFunc("", h.SubmitProduct).Methods("POST")
 	protectedRouter.HandleFunc("/{id}/upvote", h.UpvoteProduct).Methods("POST")
 	protectedRouter.HandleFunc("/{id}", h.UpdateProduct).Methods("PUT")
+	protectedRouter.HandleFunc("/{id}/edit", h.SubmitProductEdit).Methods("POST")
 
 	// Admin-only revision routes
 	protectedRouter.HandleFunc("/{id}/revert/{revision}", h.RevertProduct).Methods("POST")
@@ -625,6 +626,51 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Product updated successfully",
+	})
+}
+
+// SubmitProductEdit handles submitting edits to an existing product for admin review
+func (h *Handler) SubmitProductEdit(w http.ResponseWriter, r *http.Request) {
+	// Get user from context
+	user, ok := r.Context().Value(middleware.UserContextKey).(*models.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check if user ID is missing
+	if user.ID == "" {
+		// Look up the user from the database by wallet address
+		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
+		if err != nil {
+			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		user = fullUser
+	}
+
+	vars := mux.Vars(r)
+	productID := vars["id"]
+
+	var product models.Product
+	err := json.NewDecoder(r.Body).Decode(&product)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.svc.SubmitProductEdit(productID, &product, user.ID)
+	if err != nil {
+		http.Error(w, "Failed to submit product edit: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(map[string]string{
+		"message":    "Product edit submitted for review",
+		"product_id": productID,
+		"status":     "pending",
 	})
 }
 

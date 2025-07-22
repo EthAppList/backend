@@ -135,6 +135,33 @@ func (s *Service) SubmitProduct(product *models.Product) error {
 	return nil
 }
 
+// SubmitProductEdit submits edits to an existing product for admin review
+func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Product, userID string) error {
+	// Ensure the product exists
+	existingProduct, err := s.repo.GetProductByID(productID)
+	if err != nil {
+		return fmt.Errorf("product not found: %w", err)
+	}
+
+	// Ensure we're updating the correct product ID
+	updatedProduct.ID = existingProduct.ID
+
+	// Create a pending edit for admin review
+	_, err = s.repo.CreatePendingEdit(
+		userID,
+		"product",
+		productID,
+		"update",
+		updatedProduct,
+	)
+
+	if err != nil {
+		return fmt.Errorf("failed to submit product edit for review: %w", err)
+	}
+
+	return nil
+}
+
 // GetCategories returns all categories
 func (s *Service) GetCategories() ([]models.Category, error) {
 	return s.repo.GetCategories()

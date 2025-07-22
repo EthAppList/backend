@@ -189,6 +189,14 @@ go run cmd/server/main.go
   - Request: Product object with categories and chains
   - Response: Created product object
 
+- `POST /api/products/{id}/edit` - Submit edits to existing product for review (requires auth)
+  - Request: Updated Product object
+  - Response: Success message with pending status
+
+- `PUT /api/products/{id}` - Direct update to existing product (requires auth, creates revision immediately)
+  - Request: `{"product": Product, "edit_summary": "string", "minor_edit": boolean}`
+  - Response: Success message
+
 - `POST /api/products/{id}/upvote` - Upvote a product (requires auth)
   - Response: 204 No Content on success
 

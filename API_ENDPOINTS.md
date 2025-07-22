@@ -143,6 +143,24 @@ Update an existing product with revision tracking.
 
 **Response:** Success message
 
+### POST `/api/products/{id}/edit` 🔒
+Submit edits to an existing product for admin review.
+
+**Authentication:** Required  
+**Path Parameters:**
+- `id`: Product ID
+
+**Request Body:** Updated Product object
+
+**Response:** 
+```json
+{
+  "message": "Product edit submitted for review",
+  "product_id": "string",
+  "status": "pending"
+}
+```
+
 ### POST `/api/products/{id}/upvote` 🔒
 Upvote a product.
 
