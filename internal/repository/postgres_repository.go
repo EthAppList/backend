@@ -326,6 +326,16 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 		return nil, err
 	}
 
+	// Load submitter
+	if err = r.loadProductSubmitter(product); err != nil {
+		return nil, err
+	}
+
+	// Load last editor
+	if err = r.loadProductLastEditor(product); err != nil {
+		return nil, err
+	}
+
 	// Get upvote count
 	upvoteCount, err := r.getProductUpvoteCount(product.ID)
 	if err != nil {
@@ -455,6 +465,16 @@ func (r *PostgresRepository) GetProducts(
 			return nil, 0, err
 		}
 
+		// Load submitter
+		if err = r.loadProductSubmitter(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Load last editor
+		if err = r.loadProductLastEditor(product); err != nil {
+			return nil, 0, err
+		}
+
 		// Get upvote count
 		upvoteCount, err := r.getProductUpvoteCount(product.ID)
 		if err != nil {
@@ -546,6 +566,74 @@ func (r *PostgresRepository) getProductUpvoteCount(productID string) (int, error
 		return 0, fmt.Errorf("failed to count upvotes: %w", err)
 	}
 	return count, nil
+}
+
+// loadProductSubmitter loads the submitter user information for a product
+func (r *PostgresRepository) loadProductSubmitter(product *models.Product) error {
+	if product.SubmitterID == "" {
+		return nil // No submitter to load
+	}
+
+	query := `
+		SELECT id, wallet_address, twitter_handle, created_at, updated_at
+		FROM users
+		WHERE id = $1
+	`
+
+	submitter := &models.User{}
+	err := r.db.QueryRow(query, product.SubmitterID).Scan(
+		&submitter.ID,
+		&submitter.WalletAddress,
+		&submitter.TwitterHandle,
+		&submitter.CreatedAt,
+		&submitter.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		// Submitter not found, but don't fail the product load
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to load product submitter: %w", err)
+	}
+
+	product.Submitter = submitter
+	return nil
+}
+
+// loadProductLastEditor loads the last editor user information for a product
+func (r *PostgresRepository) loadProductLastEditor(product *models.Product) error {
+	if product.LastEditorID == nil || *product.LastEditorID == "" {
+		return nil // No last editor to load
+	}
+
+	query := `
+		SELECT id, wallet_address, twitter_handle, created_at, updated_at
+		FROM users
+		WHERE id = $1
+	`
+
+	lastEditor := &models.User{}
+	err := r.db.QueryRow(query, *product.LastEditorID).Scan(
+		&lastEditor.ID,
+		&lastEditor.WalletAddress,
+		&lastEditor.TwitterHandle,
+		&lastEditor.CreatedAt,
+		&lastEditor.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		// Last editor not found, but don't fail the product load
+		return nil
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to load product last editor: %w", err)
+	}
+
+	product.LastEditor = lastEditor
+	return nil
 }
 
 // Add the rest of the repository methods as needed

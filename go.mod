@@ -21,7 +21,6 @@ require (
 	github.com/go-viper/mapstructure/v2 v2.2.1 // indirect
 	github.com/google/go-querystring v1.1.0 // indirect
 	github.com/holiman/uint256 v1.2.3 // indirect
-	github.com/nedpals/postgrest-go v0.2.0 // indirect
 	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/sys v0.13.0 // indirect
 )
