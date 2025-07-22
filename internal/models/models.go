@@ -25,6 +25,10 @@ type Product struct {
 	ShortDesc             string    `json:"short_desc" db:"short_desc"`
 	LongDesc              string    `json:"long_desc" db:"long_desc"`
 	LogoURL               string    `json:"logo_url" db:"logo_url"`
+	WebsiteURL            *string   `json:"website_url,omitempty" db:"website_url"`
+	GitHubURL             *string   `json:"github_url,omitempty" db:"github_url"`
+	DocsURL               *string   `json:"docs_url,omitempty" db:"docs_url"`
+	AuditReports          []string  `json:"audit_reports,omitempty" db:"audit_reports"`
 	MarkdownContent       string    `json:"markdown_content" db:"markdown_content"`
 	SubmitterID           string    `json:"submitter_id" db:"submitter_id"`
 	Approved              bool      `json:"approved" db:"approved"`
