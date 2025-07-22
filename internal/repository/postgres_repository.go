@@ -491,6 +491,9 @@ func (r *PostgresRepository) GetProducts(
 // Helper functions
 
 func (r *PostgresRepository) loadProductCategories(product *models.Product) error {
+	// Initialize as empty slice to ensure it's never nil
+	categories := []models.Category{}
+
 	query := `
 		SELECT c.id, c.name, c.description, c.created_at, c.updated_at
 		FROM categories c
@@ -504,7 +507,6 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 	}
 	defer rows.Close()
 
-	categories := []models.Category{}
 	for rows.Next() {
 		var category models.Category
 		err := rows.Scan(
@@ -525,6 +527,9 @@ func (r *PostgresRepository) loadProductCategories(product *models.Product) erro
 }
 
 func (r *PostgresRepository) loadProductChains(product *models.Product) error {
+	// Initialize as empty slice to ensure it's never nil
+	chains := []models.Chain{}
+
 	query := `
 		SELECT c.id, c.name, c.icon, c.created_at, c.updated_at
 		FROM chains c
@@ -538,7 +543,6 @@ func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 	}
 	defer rows.Close()
 
-	chains := []models.Chain{}
 	for rows.Next() {
 		var chain models.Chain
 		err := rows.Scan(
