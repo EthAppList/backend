@@ -23,6 +23,7 @@ type DataRepository interface {
 	// Product methods
 	CreateProduct(product *models.Product) error
 	GetProductByID(id string) (*models.Product, error)
+	GetProductByIDAdmin(id string) (*models.Product, error)
 	GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error)
 	UpdateProduct(product *models.Product) error
 	DeleteAllProducts() error
@@ -103,13 +104,18 @@ func (s *Service) GetProducts(categoryID, chainID, searchTerm, sortOption string
 	return s.repo.GetProducts(categoryID, chainID, searchTerm, sortOption, page, perPage)
 }
 
-// GetProduct returns a single product by ID
+// GetProduct returns a single APPROVED product by ID (public API)
 func (s *Service) GetProduct(id string) (*models.Product, error) {
 	return s.repo.GetProductByID(id)
 }
 
+// GetProductAdmin returns ANY product by ID (admin API - includes pending)
+func (s *Service) GetProductAdmin(id string) (*models.Product, error) {
+	return s.repo.GetProductByIDAdmin(id)
+}
+
 // SubmitProduct creates a new product submission for admin review
-func (s *Service) SubmitProduct(product *models.Product) error {
+func (s *Service) SubmitProduct(product *models.Product, userWallet string) error {
 	// Generate a temporary ID for the product if not provided
 	if product.ID == "" {
 		product.ID = fmt.Sprintf("pending_%d", time.Now().UnixNano())
@@ -126,7 +132,15 @@ func (s *Service) SubmitProduct(product *models.Product) error {
 	product.OverallScore = 0.5
 	product.VibesScore = 0.5
 
-	// Create a pending edit for admin review instead of creating the product directly
+	// Check if this is an admin submission - if so, auto-approve
+	if s.IsUserAdmin(userWallet) {
+		// Admin submissions are auto-approved
+		product.Approved = true
+		product.ID = "" // Let repository generate clean ID for approved products
+		return s.repo.CreateProduct(product)
+	}
+
+	// For non-admin users, create a pending edit for admin review
 	_, err := s.repo.CreatePendingEdit(
 		product.SubmitterID,
 		"product",
@@ -143,7 +157,7 @@ func (s *Service) SubmitProduct(product *models.Product) error {
 }
 
 // SubmitProductEdit submits edits to an existing product for admin review
-func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Product, userID string) error {
+func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Product, userID string, userWallet string) error {
 	// Ensure the product exists
 	existingProduct, err := s.repo.GetProductByID(productID)
 	if err != nil {
@@ -153,7 +167,13 @@ func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Pro
 	// Ensure we're updating the correct product ID
 	updatedProduct.ID = existingProduct.ID
 
-	// Create a pending edit for admin review
+	// Check if this is an admin submission - if so, auto-approve
+	if s.IsUserAdmin(userWallet) {
+		// Admin edits are auto-approved - directly update the product
+		return s.repo.UpdateProduct(updatedProduct)
+	}
+
+	// For non-admin users, create a pending edit for admin review
 	_, err = s.repo.CreatePendingEdit(
 		userID,
 		"product",

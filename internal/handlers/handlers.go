@@ -78,6 +78,7 @@ func RegisterAdminHandlers(router *mux.Router, svc *service.Service) {
 	router.HandleFunc("/approve/{id}", h.ApproveEdit).Methods("POST")
 	router.HandleFunc("/reject/{id}", h.RejectEdit).Methods("POST")
 	router.HandleFunc("/recent-edits", h.GetRecentEdits).Methods("GET")
+	router.HandleFunc("/products/{id}", h.GetProductAdmin).Methods("GET")
 }
 
 // RegisterUserHandlers registers user-related routes
@@ -182,12 +183,27 @@ func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// GetProduct handles getting a single product
+// GetProduct handles getting a single APPROVED product (public API)
 func (h *Handler) GetProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	id := vars["id"]
 
 	product, err := h.svc.GetProduct(id)
+	if err != nil {
+		http.Error(w, "Failed to get product: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(product)
+}
+
+// GetProductAdmin handles getting ANY product including pending (admin API)
+func (h *Handler) GetProductAdmin(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	product, err := h.svc.GetProductAdmin(id)
 	if err != nil {
 		http.Error(w, "Failed to get product: "+err.Error(), http.StatusNotFound)
 		return
@@ -227,7 +243,7 @@ func (h *Handler) SubmitProduct(w http.ResponseWriter, r *http.Request) {
 	// Set submitter ID from the user (either from token or looked up)
 	product.SubmitterID = user.ID
 
-	err = h.svc.SubmitProduct(&product)
+	err = h.svc.SubmitProduct(&product, user.WalletAddress)
 	if err != nil {
 		http.Error(w, "Failed to submit product: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -662,7 +678,7 @@ func (h *Handler) SubmitProductEdit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = h.svc.SubmitProductEdit(productID, &product, user.ID)
+	err = h.svc.SubmitProductEdit(productID, &product, user.ID, user.WalletAddress)
 	if err != nil {
 		http.Error(w, "Failed to submit product edit: "+err.Error(), http.StatusInternalServerError)
 		return

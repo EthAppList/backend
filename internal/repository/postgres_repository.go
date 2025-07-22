@@ -272,8 +272,81 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	return nil
 }
 
-// GetProductByID gets a product by its ID
+// GetProductByID gets an APPROVED product by its ID (public API)
 func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) {
+	query := `
+		SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
+		       markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
+		       security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
+		FROM products
+		WHERE id = $1 AND approved = true
+	`
+
+	product := &models.Product{}
+	err := r.db.QueryRow(query, id).Scan(
+		&product.ID,
+		&product.Title,
+		&product.ShortDesc,
+		&product.LongDesc,
+		&product.LogoURL,
+		&product.WebsiteURL,
+		&product.GitHubURL,
+		&product.DocsURL,
+		pq.Array(&product.AuditReports),
+		&product.MarkdownContent,
+		&product.SubmitterID,
+		&product.Approved,
+		&product.IsVerified,
+		pq.Array(&product.AnalyticsList),
+		&product.OverallScore,
+		&product.SecurityScore,
+		&product.UXScore,
+		&product.VibesScore,
+		&product.CurrentRevisionNumber,
+		&product.LastEditorID,
+		&product.CreatedAt,
+		&product.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, errors.New("product not found")
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get product: %w", err)
+	}
+
+	// Load categories and chains for approved products
+	if err = r.loadProductCategories(product); err != nil {
+		return nil, err
+	}
+
+	if err = r.loadProductChains(product); err != nil {
+		return nil, err
+	}
+
+	// Load submitter
+	if err = r.loadProductSubmitter(product); err != nil {
+		return nil, err
+	}
+
+	// Load last editor
+	if err = r.loadProductLastEditor(product); err != nil {
+		return nil, err
+	}
+
+	// Get upvote count
+	upvoteCount, err := r.getProductUpvoteCount(product.ID)
+	if err != nil {
+		return nil, err
+	}
+	product.UpvoteCount = upvoteCount
+
+	return product, nil
+}
+
+// GetProductByIDAdmin gets ANY product by its ID (admin API - includes pending)
+func (r *PostgresRepository) GetProductByIDAdmin(id string) (*models.Product, error) {
 	query := `
 		SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
 		       markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
@@ -316,12 +389,11 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 		return nil, fmt.Errorf("failed to get product: %w", err)
 	}
 
-	// Load categories
+	// Always load categories and chains for admin view
 	if err = r.loadProductCategories(product); err != nil {
 		return nil, err
 	}
 
-	// Load chains
 	if err = r.loadProductChains(product); err != nil {
 		return nil, err
 	}
@@ -637,6 +709,48 @@ func (r *PostgresRepository) loadProductLastEditor(product *models.Product) erro
 	}
 
 	product.LastEditor = lastEditor
+	return nil
+}
+
+// loadCategoriesAndChainsFromPendingEdit loads categories and chains from pending edit data for unapproved products
+func (r *PostgresRepository) loadCategoriesAndChainsFromPendingEdit(product *models.Product) error {
+	// Initialize empty slices
+	product.Categories = []models.Category{}
+	product.Chains = []models.Chain{}
+
+	// Look for the most recent pending edit for this product
+	query := `
+		SELECT change_data FROM pending_edits 
+		WHERE entity_id = $1 AND entity_type = 'product' 
+		ORDER BY created_at DESC 
+		LIMIT 1
+	`
+
+	var changeDataJSON string
+	err := r.db.QueryRow(query, product.ID).Scan(&changeDataJSON)
+	if err == sql.ErrNoRows {
+		// No pending edit found, return empty arrays
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("failed to get pending edit data: %w", err)
+	}
+
+	// Unmarshal the JSON data to get the product with categories and chains
+	var pendingProduct models.Product
+	err = json.Unmarshal([]byte(changeDataJSON), &pendingProduct)
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal pending edit data: %w", err)
+	}
+
+	// Copy the categories and chains from the pending edit
+	if pendingProduct.Categories != nil {
+		product.Categories = pendingProduct.Categories
+	}
+	if pendingProduct.Chains != nil {
+		product.Chains = pendingProduct.Chains
+	}
+
 	return nil
 }
 
