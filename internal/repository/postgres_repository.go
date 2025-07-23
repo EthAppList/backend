@@ -220,21 +220,21 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	log.Printf("CreateProduct: Processing %d categories for product %s", len(product.Categories), product.ID)
 	if len(product.Categories) > 0 {
 		for i, category := range product.Categories {
-			log.Printf("CreateProduct: Processing category %d: '%s'", i+1, category.Name)
+			log.Printf("CreateProduct: Processing category %d: '%s'", i+1, category.ID)
 
 			// Skip empty or invalid category names
-			if strings.TrimSpace(category.Name) == "" {
-				log.Printf("CreateProduct: Skipping empty category name at index %d", i+1)
+			if strings.TrimSpace(category.ID) == "" {
+				log.Printf("CreateProduct: Skipping empty category ID at index %d", i+1)
 				continue
 			}
 
 			// Ensure category exists (create if new) and get its ID
-			categoryID, err := r.ensureCategoryExists(tx, category.Name)
+			categoryID, err := r.ensureCategoryExists(tx, category.ID)
 			if err != nil {
-				log.Printf("CreateProduct: FAILED to ensure category '%s' exists: %v", category.Name, err)
+				log.Printf("CreateProduct: FAILED to ensure category '%s' exists: %v", category.ID, err)
 				return fmt.Errorf("failed to ensure category exists: %w", err)
 			}
-			log.Printf("CreateProduct: Category '%s' resolved to ID: %s", category.Name, categoryID)
+			log.Printf("CreateProduct: Category '%s' resolved to ID: %s", category.ID, categoryID)
 
 			_, err = tx.Exec(
 				"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
@@ -254,21 +254,21 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	log.Printf("CreateProduct: Processing %d chains for product %s", len(product.Chains), product.ID)
 	if len(product.Chains) > 0 {
 		for i, chain := range product.Chains {
-			log.Printf("CreateProduct: Processing chain %d: '%s'", i+1, chain.Name)
+			log.Printf("CreateProduct: Processing chain %d: '%s'", i+1, chain.ID)
 
 			// Skip empty or invalid chain names
-			if strings.TrimSpace(chain.Name) == "" {
-				log.Printf("CreateProduct: Skipping empty chain name at index %d", i+1)
+			if strings.TrimSpace(chain.ID) == "" {
+				log.Printf("CreateProduct: Skipping empty chain ID at index %d", i+1)
 				continue
 			}
 
 			// Ensure chain exists (create if new) and get its ID
-			chainID, err := r.ensureChainExists(tx, chain.Name)
+			chainID, err := r.ensureChainExists(tx, chain.ID)
 			if err != nil {
-				log.Printf("CreateProduct: FAILED to ensure chain '%s' exists: %v", chain.Name, err)
+				log.Printf("CreateProduct: FAILED to ensure chain '%s' exists: %v", chain.ID, err)
 				return fmt.Errorf("failed to ensure chain exists: %w", err)
 			}
-			log.Printf("CreateProduct: Chain '%s' resolved to ID: %s", chain.Name, chainID)
+			log.Printf("CreateProduct: Chain '%s' resolved to ID: %s", chain.ID, chainID)
 
 			_, err = tx.Exec(
 				"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
@@ -1559,23 +1559,23 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 	// Then, insert the new category and chain relationships
 	log.Printf("UpdateProduct: Inserting %d new categories and %d new chains for product %s", len(product.Categories), len(product.Chains), product.ID)
 	for _, category := range product.Categories {
-		categoryID, err := r.ensureCategoryExists(tx, category.Name)
+		categoryID, err := r.ensureCategoryExists(tx, category.ID)
 		if err != nil {
-			return fmt.Errorf("failed to ensure category '%s' exists: %w", category.Name, err)
+			return fmt.Errorf("failed to ensure category '%s' exists: %w", category.ID, err)
 		}
 		if _, err := tx.Exec("INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)", product.ID, categoryID); err != nil {
-			return fmt.Errorf("failed to link product to category '%s': %w", category.Name, err)
+			return fmt.Errorf("failed to link product to category '%s': %w", category.ID, err)
 		}
 		log.Printf("UpdateProduct: Successfully linked product %s to category %s", product.ID, categoryID)
 	}
 
 	for _, chain := range product.Chains {
-		chainID, err := r.ensureChainExists(tx, chain.Name)
+		chainID, err := r.ensureChainExists(tx, chain.ID)
 		if err != nil {
-			return fmt.Errorf("failed to ensure chain '%s' exists: %w", chain.Name, err)
+			return fmt.Errorf("failed to ensure chain '%s' exists: %w", chain.ID, err)
 		}
 		if _, err := tx.Exec("INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)", product.ID, chainID); err != nil {
-			return fmt.Errorf("failed to link product to chain '%s': %w", chain.Name, err)
+			return fmt.Errorf("failed to link product to chain '%s': %w", chain.ID, err)
 		}
 		log.Printf("UpdateProduct: Successfully linked product %s to chain %s", product.ID, chainID)
 	}
