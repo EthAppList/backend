@@ -1,7 +1,9 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strconv"
@@ -607,6 +609,18 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	productID := vars["id"]
 
+	// Log raw request body for debugging
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("UpdateProduct: Failed to read request body: %v", err)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("UpdateProduct: Received raw request body: %s", string(bodyBytes))
+
+	// Restore request body so it can be read again
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
 	// Parse request body which should include both product data and edit summary
 	var req struct {
 		Product     models.Product `json:"product"`
@@ -614,7 +628,7 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		MinorEdit   bool           `json:"minor_edit,omitempty"`
 	}
 
-	err := json.NewDecoder(r.Body).Decode(&req)
+	err = json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
