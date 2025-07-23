@@ -13,6 +13,7 @@ import (
 	"github.com/wesjorgensen/EthAppList/backend/internal/config"
 	"github.com/wesjorgensen/EthAppList/backend/internal/handlers"
 	"github.com/wesjorgensen/EthAppList/backend/internal/middleware"
+	"github.com/wesjorgensen/EthAppList/backend/internal/redis"
 	"github.com/wesjorgensen/EthAppList/backend/internal/repository"
 	"github.com/wesjorgensen/EthAppList/backend/internal/service"
 )
@@ -39,8 +40,18 @@ func main() {
 	// Make sure to close the connection when done
 	defer pgRepo.Close()
 
-	// Initialize service layer
-	svc := service.New(pgRepo, cfg)
+	// Initialize Redis service for pending changes
+	log.Printf("Connecting to Redis at %s...", cfg.RedisURL)
+	redisService, err := redis.NewRedisService(cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("Failed to initialize Redis service: %v", err)
+	}
+
+	// Make sure to close Redis connection when done
+	defer redisService.Close()
+
+	// Initialize service layer with Redis support
+	svc := service.New(pgRepo, redisService, cfg)
 
 	// Initialize router
 	r := mux.NewRouter()

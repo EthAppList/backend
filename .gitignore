@@ -32,9 +32,11 @@ go.work
 # Compiled binary
 app
 crypto-products-backend
+server
 
 # Logs
 *.log
 
 # Build directory
 /dist/ 
+

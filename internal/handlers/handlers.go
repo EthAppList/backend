@@ -81,7 +81,15 @@ func RegisterChainHandlers(router *mux.Router, svc *service.Service) {
 func RegisterAdminHandlers(router *mux.Router, svc *service.Service) {
 	h := New(svc)
 
+	// Legacy endpoint for backwards compatibility
 	router.HandleFunc("/pending", h.GetPendingEdits).Methods("GET")
+
+	// New Redis-based endpoints
+	router.HandleFunc("/pending-changes", h.GetPendingChanges).Methods("GET")
+	router.HandleFunc("/pending-products/{id}", h.GetPendingProduct).Methods("GET")
+	router.HandleFunc("/pending-edits/{id}", h.GetPendingEdit).Methods("GET")
+
+	// Approval/rejection endpoints (updated to work with Redis)
 	router.HandleFunc("/approve/{id}", h.ApproveEdit).Methods("POST")
 	router.HandleFunc("/reject/{id}", h.RejectEdit).Methods("POST")
 	router.HandleFunc("/recent-edits", h.GetRecentEdits).Methods("GET")
@@ -755,4 +763,47 @@ func (h *Handler) GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(response)
+}
+
+// GetPendingChanges handles getting all pending changes from Redis (for admin dashboard)
+func (h *Handler) GetPendingChanges(w http.ResponseWriter, r *http.Request) {
+	// This endpoint replaces GetPendingEdits for the new Redis-based workflow
+	pendingChanges, err := h.svc.GetAllPendingChanges()
+	if err != nil {
+		http.Error(w, "Failed to get pending changes: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pendingChanges)
+}
+
+// GetPendingProduct handles getting a specific pending product from Redis
+func (h *Handler) GetPendingProduct(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	pendingProduct, err := h.svc.GetPendingProduct(id)
+	if err != nil {
+		http.Error(w, "Failed to get pending product: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pendingProduct)
+}
+
+// GetPendingEdit handles getting a specific pending edit from Redis
+func (h *Handler) GetPendingEdit(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	id := vars["id"]
+
+	pendingEdit, err := h.svc.GetPendingEdit(id)
+	if err != nil {
+		http.Error(w, "Failed to get pending edit: "+err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(pendingEdit)
 }

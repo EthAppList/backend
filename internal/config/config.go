@@ -25,6 +25,9 @@ type Config struct {
 	DBUser     string
 	DBPassword string
 	DBName     string
+
+	// Redis configuration
+	RedisURL string
 }
 
 // New creates a new configuration from environment variables
@@ -92,6 +95,12 @@ func New() (*Config, error) {
 		return nil, errors.New("ADMIN_WALLET_ADDRESS is required")
 	}
 
+	// Redis configuration - optional, defaults to localhost for development
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		redisURL = "redis://localhost:6379/0" // Default for development
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // Default port
@@ -112,6 +121,7 @@ func New() (*Config, error) {
 		DBUser:      dbUser,
 		DBPassword:  dbPassword,
 		DBName:      dbName,
+		RedisURL:    redisURL,
 	}, nil
 }
 

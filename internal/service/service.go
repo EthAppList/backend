@@ -12,6 +12,7 @@ import (
 
 	"github.com/wesjorgensen/EthAppList/backend/internal/config"
 	"github.com/wesjorgensen/EthAppList/backend/internal/models"
+	"github.com/wesjorgensen/EthAppList/backend/internal/redis"
 )
 
 // DataRepository interface defines the methods required by the service
@@ -56,15 +57,17 @@ type DataRepository interface {
 
 // Service implements business logic for the application
 type Service struct {
-	repo DataRepository
-	cfg  *config.Config
+	repo  DataRepository
+	redis *redis.RedisService
+	cfg   *config.Config
 }
 
-// New creates a new service
-func New(repo DataRepository, cfg *config.Config) *Service {
+// New creates a new service with Redis support
+func New(repo DataRepository, redisService *redis.RedisService, cfg *config.Config) *Service {
 	return &Service{
-		repo: repo,
-		cfg:  cfg,
+		repo:  repo,
+		redis: redisService,
+		cfg:   cfg,
 	}
 }
 
@@ -115,13 +118,7 @@ func (s *Service) GetProduct(id string) (*models.Product, error) {
 
 // SubmitProduct creates a new product submission for admin review
 func (s *Service) SubmitProduct(product *models.Product, userWallet string) error {
-	// Generate a temporary ID for the product if not provided
-	if product.ID == "" {
-		product.ID = fmt.Sprintf("pending_%d", time.Now().UnixNano())
-	}
-
 	// Set default values for submission
-	product.Approved = false // Will be set to true when approved
 	product.CurrentRevisionNumber = 1
 
 	// SECURITY: Always set scores to default values (50) regardless of what client sends
@@ -131,25 +128,23 @@ func (s *Service) SubmitProduct(product *models.Product, userWallet string) erro
 	product.OverallScore = 0.5
 	product.VibesScore = 0.5
 
-	// Check if this is an admin submission - if so, auto-approve
+	// Check if this is an admin submission - if so, auto-approve (git push force)
 	if s.IsUserAdmin(userWallet) {
-		// Admin submissions are auto-approved
+		// Admin submissions go directly to main database (bypass Redis)
 		product.Approved = true
 		product.ID = "" // Let repository generate clean ID for approved products
 		return s.repo.CreateProduct(product)
 	}
 
-	// For non-admin users, create a pending edit for admin review
-	_, err := s.repo.CreatePendingEdit(
-		product.SubmitterID,
-		"product",
-		product.ID,
-		"create",
-		product,
-	)
+	// For non-admin users, store in Redis as pending change (git-like workflow)
+	pendingProduct := &models.PendingProduct{
+		UserID:  product.SubmitterID,
+		Product: *product,
+	}
 
+	err := s.redis.StorePendingProduct(pendingProduct)
 	if err != nil {
-		return fmt.Errorf("failed to submit product for review: %w", err)
+		return fmt.Errorf("failed to store pending product in Redis: %w", err)
 	}
 
 	return nil
@@ -166,24 +161,12 @@ func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Pro
 	// Ensure we're updating the correct product ID
 	updatedProduct.ID = existingProduct.ID
 
-	// Check if this is an admin submission - if so, auto-approve using the comprehensive approval logic
+	// Check if this is an admin submission - if so, auto-approve (git push force)
 	if s.IsUserAdmin(userWallet) {
-		// For admin edits, create a pending edit first and then immediately approve it
-		// This ensures we use the same comprehensive approval logic that handles categories, chains, etc.
-		pendingEdit, err := s.repo.CreatePendingEdit(
-			userID,
-			"product",
-			productID,
-			"update",
-			updatedProduct,
-		)
-
-		if err != nil {
-			return fmt.Errorf("failed to create pending edit: %w", err)
-		}
-
-		// Immediately approve the edit using the comprehensive approval logic
-		err = s.repo.ApproveEdit(pendingEdit.ID)
+		// For admin edits, directly update the main product using revision system
+		// This bypasses Redis and goes straight to the database like git push force
+		editSummary := "Admin edit (auto-approved)"
+		err = s.UpdateProduct(updatedProduct, userID, editSummary, false, true)
 		if err != nil {
 			return fmt.Errorf("failed to auto-approve admin edit: %w", err)
 		}
@@ -191,17 +174,18 @@ func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Pro
 		return nil
 	}
 
-	// For non-admin users, create a pending edit for admin review
-	_, err = s.repo.CreatePendingEdit(
-		userID,
-		"product",
-		productID,
-		"update",
-		updatedProduct,
-	)
+	// For non-admin users, store edit in Redis as pending change (git-like workflow)
+	pendingEdit := &models.PendingProductEdit{
+		UserID:       userID,
+		ProductID:    productID,
+		OriginalData: *existingProduct,
+		UpdatedData:  *updatedProduct,
+		EditSummary:  "User-submitted edit",
+	}
 
+	err = s.redis.StorePendingEdit(pendingEdit)
 	if err != nil {
-		return fmt.Errorf("failed to submit product edit for review: %w", err)
+		return fmt.Errorf("failed to store pending edit in Redis: %w", err)
 	}
 
 	return nil
@@ -227,19 +211,115 @@ func (s *Service) UpvoteProduct(userID, productID string) error {
 	return s.repo.UpvoteProduct(userID, productID)
 }
 
-// GetPendingEdits returns all pending edits
+// GetPendingEdits returns all pending edits from Redis
 func (s *Service) GetPendingEdits() ([]models.PendingEdit, error) {
-	return s.repo.GetPendingEdits()
+	// Get pending changes from Redis
+	pendingChanges, err := s.redis.GetAllPendingChanges()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pending changes from Redis: %w", err)
+	}
+
+	// Convert Redis format to legacy format for backwards compatibility
+	var legacyEdits []models.PendingEdit
+
+	// Convert pending products to legacy format
+	for _, pendingProduct := range pendingChanges.PendingProducts {
+		legacyEdit := models.PendingEdit{
+			ID:          pendingProduct.ID,
+			UserID:      pendingProduct.UserID,
+			EntityType:  "product",
+			EntityID:    pendingProduct.Product.ID,
+			ChangeType:  "create",
+			Status:      pendingProduct.Status,
+			CreatedAt:   pendingProduct.SubmittedAt,
+			ProcessedAt: time.Time{},
+		}
+		legacyEdits = append(legacyEdits, legacyEdit)
+	}
+
+	// Convert pending edits to legacy format
+	for _, pendingEdit := range pendingChanges.PendingEdits {
+		legacyEdit := models.PendingEdit{
+			ID:          pendingEdit.ID,
+			UserID:      pendingEdit.UserID,
+			EntityType:  "product",
+			EntityID:    pendingEdit.ProductID,
+			ChangeType:  "update",
+			Status:      pendingEdit.Status,
+			CreatedAt:   pendingEdit.SubmittedAt,
+			ProcessedAt: time.Time{},
+		}
+		legacyEdits = append(legacyEdits, legacyEdit)
+	}
+
+	return legacyEdits, nil
 }
 
-// ApproveEdit approves a pending edit
+// ApproveEdit approves a pending edit from Redis and merges it to main database
 func (s *Service) ApproveEdit(editID string) error {
-	return s.repo.ApproveEdit(editID)
+	// Try to approve as pending product first
+	pendingProduct, err := s.redis.ApprovePendingProduct(editID)
+	if err == nil {
+		// Successfully found and approved a pending product - now create it in main database
+		product := pendingProduct.Product
+		product.Approved = true
+		product.ID = "" // Let repository generate clean ID
+
+		err = s.repo.CreateProduct(&product)
+		if err != nil {
+			return fmt.Errorf("failed to create approved product in database: %w", err)
+		}
+
+		return nil
+	}
+
+	// Try to approve as pending edit
+	pendingEdit, err := s.redis.ApprovePendingEdit(editID)
+	if err == nil {
+		// Successfully found and approved a pending edit - now merge it to main database
+		updatedProduct := pendingEdit.UpdatedData
+		updatedProduct.Approved = true
+
+		// Use the revision system to apply the changes
+		editSummary := pendingEdit.EditSummary
+		if editSummary == "" {
+			editSummary = "Approved user edit"
+		}
+
+		err = s.UpdateProduct(&updatedProduct, pendingEdit.UserID, editSummary, false, true)
+		if err != nil {
+			return fmt.Errorf("failed to merge approved edit to database: %w", err)
+		}
+
+		return nil
+	}
+
+	return fmt.Errorf("pending change with ID %s not found in Redis", editID)
 }
 
-// RejectEdit rejects a pending edit
+// RejectEdit rejects a pending edit from Redis
 func (s *Service) RejectEdit(editID string) error {
-	return s.repo.RejectEdit(editID)
+	err := s.redis.RejectPendingChange(editID)
+	if err != nil {
+		return fmt.Errorf("failed to reject pending change: %w", err)
+	}
+
+	return nil
+}
+
+// GetAllPendingChanges returns all pending changes from Redis
+func (s *Service) GetAllPendingChanges() (*models.PendingChangesList, error) {
+	return s.redis.GetAllPendingChanges()
+}
+
+// GetPendingProduct returns a specific pending product from Redis
+func (s *Service) GetPendingProduct(id string) (*models.PendingProduct, error) {
+	return s.redis.GetPendingProduct(id)
+}
+
+// GetPendingEdit returns a specific pending edit from Redis
+func (s *Service) GetPendingEdit(id string) (*models.PendingProductEdit, error) {
+	return s.redis.GetPendingEdit(id)
 }
 
 // GetUserByWallet gets a user by their wallet address

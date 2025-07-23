@@ -156,3 +156,33 @@ type RevisionSummary struct {
 	ChangeCount    int       `json:"change_count"`
 	MajorChange    bool      `json:"major_change"`
 }
+
+// Redis-based pending changes models for git-like workflow
+
+// PendingProduct represents a new product submission stored in Redis
+type PendingProduct struct {
+	ID          string    `json:"id"`
+	UserID      string    `json:"user_id"`
+	Product     Product   `json:"product"`
+	SubmittedAt time.Time `json:"submitted_at"`
+	Status      string    `json:"status"` // "pending", "approved", "rejected"
+}
+
+// PendingProductEdit represents an edit to an existing product stored in Redis
+type PendingProductEdit struct {
+	ID           string    `json:"id"`
+	UserID       string    `json:"user_id"`
+	ProductID    string    `json:"product_id"`
+	OriginalData Product   `json:"original_data"` // Snapshot of product before edit
+	UpdatedData  Product   `json:"updated_data"`  // Proposed changes
+	EditSummary  string    `json:"edit_summary"`
+	SubmittedAt  time.Time `json:"submitted_at"`
+	Status       string    `json:"status"` // "pending", "approved", "rejected"
+}
+
+// PendingChangesList represents a list of all pending changes for admin review
+type PendingChangesList struct {
+	PendingProducts []PendingProduct     `json:"pending_products"`
+	PendingEdits    []PendingProductEdit `json:"pending_edits"`
+	TotalCount      int                  `json:"total_count"`
+}
