@@ -85,7 +85,7 @@ func RegisterAdminHandlers(router *mux.Router, svc *service.Service) {
 	router.HandleFunc("/approve/{id}", h.ApproveEdit).Methods("POST")
 	router.HandleFunc("/reject/{id}", h.RejectEdit).Methods("POST")
 	router.HandleFunc("/recent-edits", h.GetRecentEdits).Methods("GET")
-	router.HandleFunc("/products/{id}", h.GetProductAdmin).Methods("GET")
+	// Removed: router.HandleFunc("/products/{id}", h.GetProductAdmin).Methods("GET") - this was redundant
 }
 
 // RegisterUserHandlers registers user-related routes
@@ -196,21 +196,6 @@ func (h *Handler) GetProduct(w http.ResponseWriter, r *http.Request) {
 	id := vars["id"]
 
 	product, err := h.svc.GetProduct(id)
-	if err != nil {
-		http.Error(w, "Failed to get product: "+err.Error(), http.StatusNotFound)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(product)
-}
-
-// GetProductAdmin handles getting product with pending edits for admin review
-func (h *Handler) GetProductAdmin(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
-
-	product, err := h.svc.GetProductWithPendingEdits(id)
 	if err != nil {
 		http.Error(w, "Failed to get product: "+err.Error(), http.StatusNotFound)
 		return

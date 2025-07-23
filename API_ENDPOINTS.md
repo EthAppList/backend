@@ -270,6 +270,8 @@ Get all pending edits awaiting approval.
 **Authentication:** Admin required  
 **Response:** Array of pending edit objects
 
+**Note:** This is the single endpoint for accessing pending submissions. Use this instead of trying to access individual product pending states.
+
 ### POST `/api/admin/approve/{id}`
 Approve a pending edit.
 

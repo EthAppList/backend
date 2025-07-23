@@ -113,16 +113,6 @@ func (s *Service) GetProduct(id string) (*models.Product, error) {
 	return s.repo.GetProductByID(id)
 }
 
-// GetProductAdmin returns ANY product by ID (admin API - includes pending)
-func (s *Service) GetProductAdmin(id string) (*models.Product, error) {
-	return s.repo.GetProductByIDAdmin(id)
-}
-
-// GetProductWithPendingEdits returns a product with pending edits applied (for admin review)
-func (s *Service) GetProductWithPendingEdits(id string) (*models.Product, error) {
-	return s.repo.GetProductWithPendingEdits(id)
-}
-
 // SubmitProduct creates a new product submission for admin review
 func (s *Service) SubmitProduct(product *models.Product, userWallet string) error {
 	// Generate a temporary ID for the product if not provided
@@ -176,10 +166,29 @@ func (s *Service) SubmitProductEdit(productID string, updatedProduct *models.Pro
 	// Ensure we're updating the correct product ID
 	updatedProduct.ID = existingProduct.ID
 
-	// Check if this is an admin submission - if so, auto-approve
+	// Check if this is an admin submission - if so, auto-approve using the comprehensive approval logic
 	if s.IsUserAdmin(userWallet) {
-		// Admin edits are auto-approved - directly update the product
-		return s.repo.UpdateProduct(updatedProduct)
+		// For admin edits, create a pending edit first and then immediately approve it
+		// This ensures we use the same comprehensive approval logic that handles categories, chains, etc.
+		pendingEdit, err := s.repo.CreatePendingEdit(
+			userID,
+			"product",
+			productID,
+			"update",
+			updatedProduct,
+		)
+
+		if err != nil {
+			return fmt.Errorf("failed to create pending edit: %w", err)
+		}
+
+		// Immediately approve the edit using the comprehensive approval logic
+		err = s.repo.ApproveEdit(pendingEdit.ID)
+		if err != nil {
+			return fmt.Errorf("failed to auto-approve admin edit: %w", err)
+		}
+
+		return nil
 	}
 
 	// For non-admin users, create a pending edit for admin review
