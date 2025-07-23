@@ -80,19 +80,6 @@ type Upvote struct {
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
-// PendingEdit represents a pending edit to a product or category
-type PendingEdit struct {
-	ID          string    `json:"id" db:"id"`
-	UserID      string    `json:"user_id" db:"user_id"`
-	EntityType  string    `json:"entity_type" db:"entity_type"` // "product" or "category"
-	EntityID    string    `json:"entity_id" db:"entity_id"`
-	ChangeType  string    `json:"change_type" db:"change_type"` // "create", "update"
-	ChangeData  string    `json:"change_data" db:"change_data"` // JSON string with the changes
-	Status      string    `json:"status" db:"status"`           // "pending", "approved", "rejected"
-	CreatedAt   time.Time `json:"created_at" db:"created_at"`
-	ProcessedAt time.Time `json:"processed_at,omitempty" db:"processed_at"`
-}
-
 // ProductFilter holds criteria for filtering products
 type ProductFilter struct {
 	CategoryID  string `json:"category_id"`

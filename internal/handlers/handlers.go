@@ -81,19 +81,15 @@ func RegisterChainHandlers(router *mux.Router, svc *service.Service) {
 func RegisterAdminHandlers(router *mux.Router, svc *service.Service) {
 	h := New(svc)
 
-	// Legacy endpoint for backwards compatibility
-	router.HandleFunc("/pending", h.GetPendingEdits).Methods("GET")
-
-	// New Redis-based endpoints
+	// Redis-based pending changes endpoints
 	router.HandleFunc("/pending-changes", h.GetPendingChanges).Methods("GET")
 	router.HandleFunc("/pending-products/{id}", h.GetPendingProduct).Methods("GET")
 	router.HandleFunc("/pending-edits/{id}", h.GetPendingEdit).Methods("GET")
 
-	// Approval/rejection endpoints (updated to work with Redis)
+	// Approval/rejection endpoints
 	router.HandleFunc("/approve/{id}", h.ApproveEdit).Methods("POST")
 	router.HandleFunc("/reject/{id}", h.RejectEdit).Methods("POST")
 	router.HandleFunc("/recent-edits", h.GetRecentEdits).Methods("GET")
-	// Removed: router.HandleFunc("/products/{id}", h.GetProductAdmin).Methods("GET") - this was redundant
 }
 
 // RegisterUserHandlers registers user-related routes
@@ -342,18 +338,6 @@ func (h *Handler) SubmitCategory(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(category)
-}
-
-// GetPendingEdits handles getting all pending edits
-func (h *Handler) GetPendingEdits(w http.ResponseWriter, r *http.Request) {
-	pendingEdits, err := h.svc.GetPendingEdits()
-	if err != nil {
-		http.Error(w, "Failed to get pending edits: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(pendingEdits)
 }
 
 // ApproveEdit handles approving a pending edit

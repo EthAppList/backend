@@ -25,7 +25,6 @@ type DataRepository interface {
 	CreateProduct(product *models.Product) error
 	GetProductByID(id string) (*models.Product, error)
 	GetProductByIDAdmin(id string) (*models.Product, error)
-	GetProductWithPendingEdits(id string) (*models.Product, error)
 	GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error)
 	UpdateProduct(product *models.Product) error
 	DeleteAllProducts() error
@@ -47,12 +46,6 @@ type DataRepository interface {
 
 	// Upvote methods
 	UpvoteProduct(userID, productID string) error
-
-	// Admin methods
-	GetPendingEdits() ([]models.PendingEdit, error)
-	CreatePendingEdit(userID, entityType, entityID, changeType string, changeData interface{}) (*models.PendingEdit, error)
-	ApproveEdit(editID string) error
-	RejectEdit(editID string) error
 }
 
 // Service implements business logic for the application
@@ -209,50 +202,6 @@ func (s *Service) GetChains() ([]models.Chain, error) {
 // UpvoteProduct adds an upvote to a product
 func (s *Service) UpvoteProduct(userID, productID string) error {
 	return s.repo.UpvoteProduct(userID, productID)
-}
-
-// GetPendingEdits returns all pending edits from Redis
-func (s *Service) GetPendingEdits() ([]models.PendingEdit, error) {
-	// Get pending changes from Redis
-	pendingChanges, err := s.redis.GetAllPendingChanges()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get pending changes from Redis: %w", err)
-	}
-
-	// Convert Redis format to legacy format for backwards compatibility
-	var legacyEdits []models.PendingEdit
-
-	// Convert pending products to legacy format
-	for _, pendingProduct := range pendingChanges.PendingProducts {
-		legacyEdit := models.PendingEdit{
-			ID:          pendingProduct.ID,
-			UserID:      pendingProduct.UserID,
-			EntityType:  "product",
-			EntityID:    pendingProduct.Product.ID,
-			ChangeType:  "create",
-			Status:      pendingProduct.Status,
-			CreatedAt:   pendingProduct.SubmittedAt,
-			ProcessedAt: time.Time{},
-		}
-		legacyEdits = append(legacyEdits, legacyEdit)
-	}
-
-	// Convert pending edits to legacy format
-	for _, pendingEdit := range pendingChanges.PendingEdits {
-		legacyEdit := models.PendingEdit{
-			ID:          pendingEdit.ID,
-			UserID:      pendingEdit.UserID,
-			EntityType:  "product",
-			EntityID:    pendingEdit.ProductID,
-			ChangeType:  "update",
-			Status:      pendingEdit.Status,
-			CreatedAt:   pendingEdit.SubmittedAt,
-			ProcessedAt: time.Time{},
-		}
-		legacyEdits = append(legacyEdits, legacyEdit)
-	}
-
-	return legacyEdits, nil
 }
 
 // ApproveEdit approves a pending edit from Redis and merges it to main database
