@@ -217,51 +217,71 @@ func (r *PostgresRepository) CreateProduct(product *models.Product) error {
 	}
 
 	// Insert category relationships
+	log.Printf("CreateProduct: Processing %d categories for product %s", len(product.Categories), product.ID)
 	if len(product.Categories) > 0 {
-		for _, category := range product.Categories {
+		for i, category := range product.Categories {
+			log.Printf("CreateProduct: Processing category %d: '%s'", i+1, category.Name)
+
 			// Skip empty or invalid category names
 			if strings.TrimSpace(category.Name) == "" {
+				log.Printf("CreateProduct: Skipping empty category name at index %d", i+1)
 				continue
 			}
 
 			// Ensure category exists (create if new) and get its ID
 			categoryID, err := r.ensureCategoryExists(tx, category.Name)
 			if err != nil {
+				log.Printf("CreateProduct: FAILED to ensure category '%s' exists: %v", category.Name, err)
 				return fmt.Errorf("failed to ensure category exists: %w", err)
 			}
+			log.Printf("CreateProduct: Category '%s' resolved to ID: %s", category.Name, categoryID)
 
 			_, err = tx.Exec(
 				"INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)",
 				product.ID, categoryID,
 			)
 			if err != nil {
+				log.Printf("CreateProduct: FAILED to link product %s to category %s: %v", product.ID, categoryID, err)
 				return fmt.Errorf("failed to link product to category: %w", err)
 			}
+			log.Printf("CreateProduct: Successfully linked product %s to category %s", product.ID, categoryID)
 		}
+	} else {
+		log.Printf("CreateProduct: No categories to process for product %s", product.ID)
 	}
 
 	// Insert chain relationships
+	log.Printf("CreateProduct: Processing %d chains for product %s", len(product.Chains), product.ID)
 	if len(product.Chains) > 0 {
-		for _, chain := range product.Chains {
+		for i, chain := range product.Chains {
+			log.Printf("CreateProduct: Processing chain %d: '%s'", i+1, chain.Name)
+
 			// Skip empty or invalid chain names
 			if strings.TrimSpace(chain.Name) == "" {
+				log.Printf("CreateProduct: Skipping empty chain name at index %d", i+1)
 				continue
 			}
 
 			// Ensure chain exists (create if new) and get its ID
 			chainID, err := r.ensureChainExists(tx, chain.Name)
 			if err != nil {
+				log.Printf("CreateProduct: FAILED to ensure chain '%s' exists: %v", chain.Name, err)
 				return fmt.Errorf("failed to ensure chain exists: %w", err)
 			}
+			log.Printf("CreateProduct: Chain '%s' resolved to ID: %s", chain.Name, chainID)
 
 			_, err = tx.Exec(
 				"INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)",
 				product.ID, chainID,
 			)
 			if err != nil {
+				log.Printf("CreateProduct: FAILED to link product %s to chain %s: %v", product.ID, chainID, err)
 				return fmt.Errorf("failed to link product to chain: %w", err)
 			}
+			log.Printf("CreateProduct: Successfully linked product %s to chain %s", product.ID, chainID)
 		}
+	} else {
+		log.Printf("CreateProduct: No chains to process for product %s", product.ID)
 	}
 
 	// Commit transaction
@@ -868,16 +888,22 @@ func generateID() string {
 
 // ensureCategoryExists creates a category if it doesn't exist, returns the category ID
 func (r *PostgresRepository) ensureCategoryExists(tx *sql.Tx, categoryName string) (string, error) {
+	log.Printf("ensureCategoryExists: Checking for category '%s'", categoryName)
+
 	// Check if category already exists by name (case insensitive)
 	var existingID string
 	err := tx.QueryRow("SELECT id FROM categories WHERE LOWER(name) = LOWER($1)", categoryName).Scan(&existingID)
 	if err == nil {
 		// Category exists, return its ID
+		log.Printf("ensureCategoryExists: Found existing category '%s' with ID: %s", categoryName, existingID)
 		return existingID, nil
 	}
 	if err != sql.ErrNoRows {
+		log.Printf("ensureCategoryExists: Database error while checking category '%s': %v", categoryName, err)
 		return "", fmt.Errorf("failed to check category existence: %w", err)
 	}
+
+	log.Printf("ensureCategoryExists: Category '%s' doesn't exist, creating new one", categoryName)
 
 	// Category doesn't exist, create it using name as ID
 	_, err = tx.Exec(`
@@ -887,25 +913,32 @@ func (r *PostgresRepository) ensureCategoryExists(tx *sql.Tx, categoryName strin
 	`, categoryName, categoryName, fmt.Sprintf("Auto-generated category for %s", categoryName), time.Now(), time.Now())
 
 	if err != nil {
+		log.Printf("ensureCategoryExists: FAILED to create category '%s': %v", categoryName, err)
 		return "", fmt.Errorf("failed to create category: %w", err)
 	}
 
-	log.Printf("Created new category: %s", categoryName)
+	log.Printf("ensureCategoryExists: Successfully created new category '%s'", categoryName)
 	return categoryName, nil
 }
 
 // ensureChainExists creates a chain if it doesn't exist, returns the chain ID
 func (r *PostgresRepository) ensureChainExists(tx *sql.Tx, chainName string) (string, error) {
+	log.Printf("ensureChainExists: Checking for chain '%s'", chainName)
+
 	// Check if chain already exists by name (case insensitive)
 	var existingID string
 	err := tx.QueryRow("SELECT id FROM chains WHERE LOWER(name) = LOWER($1)", chainName).Scan(&existingID)
 	if err == nil {
 		// Chain exists, return its ID
+		log.Printf("ensureChainExists: Found existing chain '%s' with ID: %s", chainName, existingID)
 		return existingID, nil
 	}
 	if err != sql.ErrNoRows {
+		log.Printf("ensureChainExists: Database error while checking chain '%s': %v", chainName, err)
 		return "", fmt.Errorf("failed to check chain existence: %w", err)
 	}
+
+	log.Printf("ensureChainExists: Chain '%s' doesn't exist, creating new one", chainName)
 
 	// Chain doesn't exist, create it using name as ID
 	_, err = tx.Exec(`
@@ -915,14 +948,15 @@ func (r *PostgresRepository) ensureChainExists(tx *sql.Tx, chainName string) (st
 	`, chainName, chainName, "", time.Now(), time.Now())
 
 	if err != nil {
+		log.Printf("ensureChainExists: FAILED to create chain '%s': %v", chainName, err)
 		return "", fmt.Errorf("failed to create chain: %w", err)
 	}
 
-	log.Printf("Created new chain: %s", chainName)
+	log.Printf("ensureChainExists: Successfully created new chain '%s'", chainName)
 	return chainName, nil
 }
 
-// DeleteAllProducts deletes all products from the database
+// DeleteAllProducts deletes all products and related data from the database
 // WARNING: This is a destructive operation and should only be used for testing
 func (r *PostgresRepository) DeleteAllProducts() error {
 	// Start a transaction
@@ -936,36 +970,64 @@ func (r *PostgresRepository) DeleteAllProducts() error {
 		}
 	}()
 
-	// Delete from related tables first to maintain referential integrity
-	// Delete product_categories join table entries
-	_, err = tx.Exec("DELETE FROM product_categories")
+	log.Printf("DeleteAllProducts: Starting complete cleanup of product data...")
+
+	// Delete in order to respect foreign key constraints
+
+	// 1. Delete product field changes (references product_revisions)
+	result, err := tx.Exec("DELETE FROM product_field_changes")
+	if err != nil {
+		return fmt.Errorf("failed to delete product field changes: %w", err)
+	}
+	rowsAffected, _ := result.RowsAffected()
+	log.Printf("DeleteAllProducts: Deleted %d product field changes", rowsAffected)
+
+	// 2. Delete product revisions (references products)
+	result, err = tx.Exec("DELETE FROM product_revisions")
+	if err != nil {
+		return fmt.Errorf("failed to delete product revisions: %w", err)
+	}
+	rowsAffected, _ = result.RowsAffected()
+	log.Printf("DeleteAllProducts: Deleted %d product revisions", rowsAffected)
+
+	// 3. Delete product categories junction table
+	result, err = tx.Exec("DELETE FROM product_categories")
 	if err != nil {
 		return fmt.Errorf("failed to delete product categories: %w", err)
 	}
+	rowsAffected, _ = result.RowsAffected()
+	log.Printf("DeleteAllProducts: Deleted %d product-category relationships", rowsAffected)
 
-	// Delete product_chains join table entries
-	_, err = tx.Exec("DELETE FROM product_chains")
+	// 4. Delete product chains junction table
+	result, err = tx.Exec("DELETE FROM product_chains")
 	if err != nil {
 		return fmt.Errorf("failed to delete product chains: %w", err)
 	}
+	rowsAffected, _ = result.RowsAffected()
+	log.Printf("DeleteAllProducts: Deleted %d product-chain relationships", rowsAffected)
 
-	// Delete upvotes related to products
-	_, err = tx.Exec("DELETE FROM upvotes")
+	// 5. Delete upvotes (references products)
+	result, err = tx.Exec("DELETE FROM upvotes")
 	if err != nil {
 		return fmt.Errorf("failed to delete upvotes: %w", err)
 	}
+	rowsAffected, _ = result.RowsAffected()
+	log.Printf("DeleteAllProducts: Deleted %d upvotes", rowsAffected)
 
-	// Finally, delete all products
-	_, err = tx.Exec("DELETE FROM products")
+	// 6. Finally, delete all products
+	result, err = tx.Exec("DELETE FROM products")
 	if err != nil {
 		return fmt.Errorf("failed to delete products: %w", err)
 	}
+	rowsAffected, _ = result.RowsAffected()
+	log.Printf("DeleteAllProducts: Deleted %d products", rowsAffected)
 
 	// Commit the transaction
 	if err = tx.Commit(); err != nil {
 		return fmt.Errorf("failed to commit transaction: %w", err)
 	}
 
+	log.Printf("DeleteAllProducts: Complete cleanup successful - database is now clean!")
 	return nil
 }
 

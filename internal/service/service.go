@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -111,6 +112,17 @@ func (s *Service) GetProduct(id string) (*models.Product, error) {
 
 // SubmitProduct creates a new product submission for admin review
 func (s *Service) SubmitProduct(product *models.Product, userWallet string) error {
+	log.Printf("SubmitProduct: Starting product submission - Title: '%s', Wallet: %s", product.Title, userWallet)
+	log.Printf("SubmitProduct: Product has %d categories and %d chains", len(product.Categories), len(product.Chains))
+
+	// Log category and chain details
+	for i, cat := range product.Categories {
+		log.Printf("SubmitProduct: Category %d: '%s'", i+1, cat.Name)
+	}
+	for i, chain := range product.Chains {
+		log.Printf("SubmitProduct: Chain %d: '%s'", i+1, chain.Name)
+	}
+
 	// Set default values for submission
 	product.CurrentRevisionNumber = 1
 
@@ -123,12 +135,20 @@ func (s *Service) SubmitProduct(product *models.Product, userWallet string) erro
 
 	// Check if this is an admin submission - if so, auto-approve (git push force)
 	if s.IsUserAdmin(userWallet) {
+		log.Printf("SubmitProduct: Admin user detected - bypassing Redis and creating product directly in database")
 		// Admin submissions go directly to main database (bypass Redis)
 		product.Approved = true
 		product.ID = "" // Let repository generate clean ID for approved products
-		return s.repo.CreateProduct(product)
+		err := s.repo.CreateProduct(product)
+		if err != nil {
+			log.Printf("SubmitProduct: FAILED to create admin product: %v", err)
+			return err
+		}
+		log.Printf("SubmitProduct: Successfully created admin product with ID: %s", product.ID)
+		return nil
 	}
 
+	log.Printf("SubmitProduct: Regular user submission - storing in Redis for admin approval")
 	// For non-admin users, store in Redis as pending change (git-like workflow)
 	pendingProduct := &models.PendingProduct{
 		UserID:  product.SubmitterID,
@@ -137,9 +157,11 @@ func (s *Service) SubmitProduct(product *models.Product, userWallet string) erro
 
 	err := s.redis.StorePendingProduct(pendingProduct)
 	if err != nil {
+		log.Printf("SubmitProduct: FAILED to store pending product in Redis: %v", err)
 		return fmt.Errorf("failed to store pending product in Redis: %w", err)
 	}
 
+	log.Printf("SubmitProduct: Successfully stored pending product in Redis")
 	return nil
 }
 
@@ -206,25 +228,45 @@ func (s *Service) UpvoteProduct(userID, productID string) error {
 
 // ApproveEdit approves a pending edit from Redis and merges it to main database
 func (s *Service) ApproveEdit(editID string) error {
+	log.Printf("ApproveEdit: Starting approval process for ID: %s", editID)
+
 	// Try to approve as pending product first
 	pendingProduct, err := s.redis.ApprovePendingProduct(editID)
 	if err == nil {
+		log.Printf("ApproveEdit: Found pending product for ID: %s, title: %s", editID, pendingProduct.Product.Title)
+		log.Printf("ApproveEdit: Product has %d categories and %d chains", len(pendingProduct.Product.Categories), len(pendingProduct.Product.Chains))
+
 		// Successfully found and approved a pending product - now create it in main database
 		product := pendingProduct.Product
 		product.Approved = true
 		product.ID = "" // Let repository generate clean ID
 
+		// Log category and chain details
+		for i, cat := range product.Categories {
+			log.Printf("ApproveEdit: Product category %d: '%s'", i+1, cat.Name)
+		}
+		for i, chain := range product.Chains {
+			log.Printf("ApproveEdit: Product chain %d: '%s'", i+1, chain.Name)
+		}
+
+		log.Printf("ApproveEdit: Creating approved product in main database...")
 		err = s.repo.CreateProduct(&product)
 		if err != nil {
+			log.Printf("ApproveEdit: FAILED to create approved product: %v", err)
 			return fmt.Errorf("failed to create approved product in database: %w", err)
 		}
 
+		log.Printf("ApproveEdit: Successfully created approved product with ID: %s", product.ID)
 		return nil
 	}
+
+	log.Printf("ApproveEdit: Not a pending product, trying as pending edit...")
 
 	// Try to approve as pending edit
 	pendingEdit, err := s.redis.ApprovePendingEdit(editID)
 	if err == nil {
+		log.Printf("ApproveEdit: Found pending edit for ID: %s, product ID: %s", editID, pendingEdit.ProductID)
+
 		// Successfully found and approved a pending edit - now merge it to main database
 		updatedProduct := pendingEdit.UpdatedData
 		updatedProduct.Approved = true
@@ -235,14 +277,18 @@ func (s *Service) ApproveEdit(editID string) error {
 			editSummary = "Approved user edit"
 		}
 
+		log.Printf("ApproveEdit: Merging edit to main database...")
 		err = s.UpdateProduct(&updatedProduct, pendingEdit.UserID, editSummary, false, true)
 		if err != nil {
+			log.Printf("ApproveEdit: FAILED to merge approved edit: %v", err)
 			return fmt.Errorf("failed to merge approved edit to database: %w", err)
 		}
 
+		log.Printf("ApproveEdit: Successfully merged approved edit")
 		return nil
 	}
 
+	log.Printf("ApproveEdit: No pending change found with ID: %s", editID)
 	return fmt.Errorf("pending change with ID %s not found in Redis", editID)
 }
 
