@@ -425,11 +425,14 @@ func (s *Service) generateJWT(user *models.User) (string, error) {
 
 // UpdateProduct handles direct product updates with edit summaries
 func (s *Service) UpdateProduct(product *models.Product, editorID, editSummary string, minorEdit bool, isAdmin bool) error {
-	// Get the current product to compare changes
-	currentProduct, err := s.repo.GetProductByID(product.ID)
+	// Get the current product to compare changes. Use admin get to fetch product regardless of approval status.
+	currentProduct, err := s.repo.GetProductByIDAdmin(product.ID)
 	if err != nil {
 		return err
 	}
+
+	// Preserve the original approval status. Approval/disapproval is a separate admin action.
+	product.Approved = currentProduct.Approved
 
 	// SECURITY: For non-admin users, preserve existing scores to prevent manipulation
 	// Only admins should be able to modify product scores

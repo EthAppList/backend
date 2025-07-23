@@ -1508,8 +1508,19 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 		    last_editor_id = $19, updated_at = NOW()
 		WHERE id = $1
 	`
+	tx, err := r.db.Begin()
+	if err != nil {
+		return fmt.Errorf("failed to begin transaction: %w", err)
+	}
+	defer func() {
+		if err != nil {
+			tx.Rollback()
+			return
+		}
+		err = tx.Commit()
+	}()
 
-	_, err := r.db.Exec(
+	_, err = tx.Exec(
 		query,
 		product.ID,
 		product.Title,
@@ -1533,7 +1544,40 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 	)
 
 	if err != nil {
-		return fmt.Errorf("failed to update product: %w", err)
+		return fmt.Errorf("failed to update product core data: %w", err)
+	}
+
+	// First, remove existing category and chain relationships
+	log.Printf("UpdateProduct: Clearing existing relationships for product %s", product.ID)
+	if _, err := tx.Exec("DELETE FROM product_categories WHERE product_id = $1", product.ID); err != nil {
+		return fmt.Errorf("failed to delete old categories: %w", err)
+	}
+	if _, err := tx.Exec("DELETE FROM product_chains WHERE product_id = $1", product.ID); err != nil {
+		return fmt.Errorf("failed to delete old chains: %w", err)
+	}
+
+	// Then, insert the new category and chain relationships
+	log.Printf("UpdateProduct: Inserting %d new categories and %d new chains for product %s", len(product.Categories), len(product.Chains), product.ID)
+	for _, category := range product.Categories {
+		categoryID, err := r.ensureCategoryExists(tx, category.Name)
+		if err != nil {
+			return fmt.Errorf("failed to ensure category '%s' exists: %w", category.Name, err)
+		}
+		if _, err := tx.Exec("INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)", product.ID, categoryID); err != nil {
+			return fmt.Errorf("failed to link product to category '%s': %w", category.Name, err)
+		}
+		log.Printf("UpdateProduct: Successfully linked product %s to category %s", product.ID, categoryID)
+	}
+
+	for _, chain := range product.Chains {
+		chainID, err := r.ensureChainExists(tx, chain.Name)
+		if err != nil {
+			return fmt.Errorf("failed to ensure chain '%s' exists: %w", chain.Name, err)
+		}
+		if _, err := tx.Exec("INSERT INTO product_chains (product_id, chain_id) VALUES ($1, $2)", product.ID, chainID); err != nil {
+			return fmt.Errorf("failed to link product to chain '%s': %w", chain.Name, err)
+		}
+		log.Printf("UpdateProduct: Successfully linked product %s to chain %s", product.ID, chainID)
 	}
 
 	return nil
