@@ -170,6 +170,69 @@ Upvote a product.
 
 **Response:** `204 No Content`
 
+### POST `/api/products/{id}/scores` 🔒
+Submit or update scores for a product.
+
+**Authentication:** Required  
+**Path Parameters:**
+- `id`: Product ID
+
+**Request Body:**
+```json
+{
+  "overall": "number (0-1)",
+  "security": "number (0-1)",
+  "ux": "number (0-1)",
+  "vibes": "number (0-1)"
+}
+```
+
+**Response:**
+```json
+{
+  "message": "Score submitted successfully",
+  "score_count": "integer",
+  "overall_score": "number",
+  "security_score": "number", 
+  "ux_score": "number",
+  "vibes_score": "number"
+}
+```
+
+### GET `/api/products/{id}/my-score` 🔒
+Check if current user has submitted a score for a product.
+
+**Authentication:** Required  
+**Path Parameters:**
+- `id`: Product ID
+
+**Response (No submission):**
+```json
+{
+  "has_submitted": false,
+  "message": "You have not submitted a score for this product yet"
+}
+```
+
+**Response (Has submission):**
+```json
+{
+  "has_submitted": true,
+  "submission": {
+    "id": "string",
+    "product_id": "string",
+    "user_id": "string",
+    "overall_score": "number",
+    "security_score": "number",
+    "ux_score": "number",
+    "vibes_score": "number",
+    "created_at": "timestamp",
+    "updated_at": "timestamp"
+  },
+  "message": "Score submission found"
+}
+```
+
 ### GET `/api/products/{id}/history`
 Get edit history for a product.
 

@@ -427,6 +427,74 @@ func (s *Service) GetUserVoteStates(userID string, productIDs []string) (map[str
 	return s.upvotesService.GetUserVoteStates(userID, productIDs)
 }
 
+// SubmitProductScore submits or updates a user's score for a product
+func (s *Service) SubmitProductScore(productID, userID string, req *models.ScoreSubmissionRequest) error {
+	// Validate the product exists and is approved
+	_, err := s.repo.GetProductByID(productID)
+	if err != nil {
+		return fmt.Errorf("product not found: %w", err)
+	}
+
+	// Check if user exists - we'll validate by attempting to get the user
+	// Since we have userID, we can proceed with validation during score submission
+
+	// Validate score ranges (should be between 0 and 1)
+	if req.Overall < 0 || req.Overall > 1 ||
+		req.Security < 0 || req.Security > 1 ||
+		req.UX < 0 || req.UX > 1 ||
+		req.Vibes < 0 || req.Vibes > 1 {
+		return fmt.Errorf("all scores must be between 0 and 1")
+	}
+
+	// Create the score submission
+	submission := &models.ProductScoreSubmission{
+		ProductID:     productID,
+		UserID:        userID,
+		OverallScore:  req.Overall,
+		SecurityScore: req.Security,
+		UXScore:       req.UX,
+		VibesScore:    req.Vibes,
+	}
+
+	// Cast to PostgresRepository to access the new methods
+	pgRepo, ok := s.repo.(*repository.PostgresRepository)
+	if !ok {
+		return fmt.Errorf("repository does not support score submissions")
+	}
+
+	// Save the submission (this will trigger automatic recalculation via database trigger)
+	err = pgRepo.SubmitProductScore(submission)
+	if err != nil {
+		return fmt.Errorf("failed to submit score: %w", err)
+	}
+
+	log.Printf("Score submitted successfully for product %s by user %s", productID, userID)
+
+	return nil
+}
+
+// GetUserScoreSubmission gets a user's score submission for a specific product
+func (s *Service) GetUserScoreSubmission(productID, userID string) (*models.ProductScoreSubmission, error) {
+	// Cast to PostgresRepository to access the new methods
+	pgRepo, ok := s.repo.(*repository.PostgresRepository)
+	if !ok {
+		return nil, fmt.Errorf("repository does not support score submissions")
+	}
+
+	return pgRepo.GetUserScoreSubmission(productID, userID)
+}
+
+// GetProductScoreStats gets aggregated score statistics for a product
+func (s *Service) GetProductScoreStats(productID string) (int, float64, float64, float64, float64, error) {
+	// Cast to PostgresRepository to access the new methods
+	pgRepo, ok := s.repo.(*repository.PostgresRepository)
+	if !ok {
+		return 0, 0, 0, 0, 0, fmt.Errorf("repository does not support score submissions")
+	}
+
+	return pgRepo.GetProductScoreStats(productID)
+}
+
 // Helper functions
 
 // verifySignature verifies an Ethereum signature

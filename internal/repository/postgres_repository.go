@@ -297,7 +297,7 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 	query := `
 		SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
 		       markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
-		       security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
+		       security_score, ux_score, vibes_score, score_count, current_revision_number, last_editor_id, created_at, updated_at
 		FROM products
 		WHERE id = $1 AND approved = true
 	`
@@ -322,6 +322,7 @@ func (r *PostgresRepository) GetProductByID(id string) (*models.Product, error) 
 		&product.SecurityScore,
 		&product.UXScore,
 		&product.VibesScore,
+		&product.ScoreCount,
 		&product.CurrentRevisionNumber,
 		&product.LastEditorID,
 		&product.CreatedAt,
@@ -370,7 +371,7 @@ func (r *PostgresRepository) GetProductByIDAdmin(id string) (*models.Product, er
 	query := `
 		SELECT id, title, short_desc, long_desc, logo_url, website_url, github_url, docs_url, audit_reports,
 		       markdown_content, submitter_id, approved, is_verified, analytics_list, overall_score, 
-		       security_score, ux_score, vibes_score, current_revision_number, last_editor_id, created_at, updated_at
+		       security_score, ux_score, vibes_score, score_count, current_revision_number, last_editor_id, created_at, updated_at
 		FROM products
 		WHERE id = $1
 	`
@@ -395,6 +396,7 @@ func (r *PostgresRepository) GetProductByIDAdmin(id string) (*models.Product, er
 		&product.SecurityScore,
 		&product.UXScore,
 		&product.VibesScore,
+		&product.ScoreCount,
 		&product.CurrentRevisionNumber,
 		&product.LastEditorID,
 		&product.CreatedAt,
@@ -1785,4 +1787,86 @@ func (r *PostgresRepository) batchLoadProductChains(productMap map[string]*model
 	}
 
 	return nil
+}
+
+// SubmitProductScore creates or updates a user's score submission for a product
+func (r *PostgresRepository) SubmitProductScore(submission *models.ProductScoreSubmission) error {
+	query := `
+		INSERT INTO product_score_submissions (product_id, user_id, overall_score, security_score, ux_score, vibes_score, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
+		ON CONFLICT (product_id, user_id) 
+		DO UPDATE SET
+			overall_score = EXCLUDED.overall_score,
+			security_score = EXCLUDED.security_score,
+			ux_score = EXCLUDED.ux_score,
+			vibes_score = EXCLUDED.vibes_score,
+			updated_at = EXCLUDED.updated_at
+		RETURNING id, created_at, updated_at
+	`
+
+	err := r.db.QueryRow(query,
+		submission.ProductID,
+		submission.UserID,
+		submission.OverallScore,
+		submission.SecurityScore,
+		submission.UXScore,
+		submission.VibesScore,
+	).Scan(&submission.ID, &submission.CreatedAt, &submission.UpdatedAt)
+
+	if err != nil {
+		return fmt.Errorf("failed to submit product score: %w", err)
+	}
+
+	return nil
+}
+
+// GetUserScoreSubmission gets a user's score submission for a specific product
+func (r *PostgresRepository) GetUserScoreSubmission(productID, userID string) (*models.ProductScoreSubmission, error) {
+	query := `
+		SELECT id, product_id, user_id, overall_score, security_score, ux_score, vibes_score, created_at, updated_at
+		FROM product_score_submissions
+		WHERE product_id = $1 AND user_id = $2
+	`
+
+	submission := &models.ProductScoreSubmission{}
+	err := r.db.QueryRow(query, productID, userID).Scan(
+		&submission.ID,
+		&submission.ProductID,
+		&submission.UserID,
+		&submission.OverallScore,
+		&submission.SecurityScore,
+		&submission.UXScore,
+		&submission.VibesScore,
+		&submission.CreatedAt,
+		&submission.UpdatedAt,
+	)
+
+	if err == sql.ErrNoRows {
+		return nil, nil // No submission found
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user score submission: %w", err)
+	}
+
+	return submission, nil
+}
+
+// GetProductScoreStats gets aggregated score statistics for a product
+func (r *PostgresRepository) GetProductScoreStats(productID string) (int, float64, float64, float64, float64, error) {
+	query := `
+		SELECT score_count, overall_score, security_score, ux_score, vibes_score
+		FROM products
+		WHERE id = $1
+	`
+
+	var count int
+	var overall, security, ux, vibes float64
+
+	err := r.db.QueryRow(query, productID).Scan(&count, &overall, &security, &ux, &vibes)
+	if err != nil {
+		return 0, 0, 0, 0, 0, fmt.Errorf("failed to get product score stats: %w", err)
+	}
+
+	return count, overall, security, ux, vibes, nil
 }

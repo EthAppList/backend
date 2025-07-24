@@ -153,6 +153,26 @@ run_tests() {
     # Fallback to using a known product ID if available, or skip
     test_endpoint "POST" "/products/1" "Upvote Product (fallback)" true "" 404
   fi
+
+  # Test score endpoints if we have a valid product ID
+  if [ -n "$CREATED_PRODUCT_ID" ]; then
+    # First check if user has submitted a score (should be false initially)
+    test_endpoint "GET" "/products/$CREATED_PRODUCT_ID/my-score" "Check Score Submission Status (should be false)" true "" 200
+    
+    # Submit a score
+    test_score='{
+      "overall": 0.8,
+      "security": 0.9,
+      "ux": 0.7,
+      "vibes": 0.85
+    }'
+    test_endpoint "POST" "/products/$CREATED_PRODUCT_ID/scores" "Submit Product Score" true "$test_score" 200
+    
+    # Check again if user has submitted a score (should be true now)
+    test_endpoint "GET" "/products/$CREATED_PRODUCT_ID/my-score" "Check Score Submission Status (should be true)" true "" 200
+  else
+    echo -e "${YELLOW}Warning: Could not test score endpoints without valid product ID${NC}"
+  fi
   
   ## CATEGORY ENDPOINTS ##
   echo -e "\n${YELLOW}===== CATEGORY ENDPOINTS =====${NC}"

@@ -38,6 +38,7 @@ type Product struct {
 	SecurityScore         float64   `json:"security_score" db:"security_score"`
 	UXScore               float64   `json:"ux_score" db:"ux_score"`
 	VibesScore            float64   `json:"vibes_score" db:"vibes_score"`
+	ScoreCount            int       `json:"score_count" db:"score_count"`
 	CurrentRevisionNumber int       `json:"current_revision_number" db:"current_revision_number"`
 	LastEditorID          *string   `json:"last_editor_id" db:"last_editor_id"`
 	CreatedAt             time.Time `json:"created_at" db:"created_at"`
@@ -73,6 +74,27 @@ type Chain struct {
 	Icon      string    `json:"icon" db:"icon"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ProductScoreSubmission represents a user's score submission for a product
+type ProductScoreSubmission struct {
+	ID            string    `json:"id" db:"id"`
+	ProductID     string    `json:"product_id" db:"product_id"`
+	UserID        string    `json:"user_id" db:"user_id"`
+	OverallScore  float64   `json:"overall_score" db:"overall_score"`
+	SecurityScore float64   `json:"security_score" db:"security_score"`
+	UXScore       float64   `json:"ux_score" db:"ux_score"`
+	VibesScore    float64   `json:"vibes_score" db:"vibes_score"`
+	CreatedAt     time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time `json:"updated_at" db:"updated_at"`
+}
+
+// ScoreSubmissionRequest represents the request payload for submitting scores
+type ScoreSubmissionRequest struct {
+	Overall  float64 `json:"overall" validate:"required,min=0,max=1"`
+	Security float64 `json:"security" validate:"required,min=0,max=1"`
+	UX       float64 `json:"ux" validate:"required,min=0,max=1"`
+	Vibes    float64 `json:"vibes" validate:"required,min=0,max=1"`
 }
 
 // Upvote represents a user's upvote on a product

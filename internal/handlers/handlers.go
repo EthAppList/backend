@@ -54,6 +54,8 @@ func RegisterProductHandlers(router *mux.Router, svc *service.Service) {
 
 	protectedRouter.HandleFunc("", h.SubmitProduct).Methods("POST")
 	protectedRouter.HandleFunc("/{id}/upvote", h.UpvoteProduct).Methods("POST")
+	protectedRouter.HandleFunc("/{id}/scores", h.SubmitProductScore).Methods("POST")
+	protectedRouter.HandleFunc("/{id}/my-score", h.GetMyProductScore).Methods("GET")
 	protectedRouter.HandleFunc("/{id}", h.UpdateProduct).Methods("PUT")
 	protectedRouter.HandleFunc("/{id}/edit", h.SubmitProductEdit).Methods("POST")
 
@@ -821,6 +823,129 @@ func (h *Handler) GetUserVoteStates(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(voteStates)
+}
+
+// SubmitProductScore handles submitting or updating scores for a product
+func (h *Handler) SubmitProductScore(w http.ResponseWriter, r *http.Request) {
+	// Get user from context
+	user, ok := r.Context().Value(middleware.UserContextKey).(*models.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check if user ID is missing
+	if user.ID == "" {
+		// Look up the user from the database by wallet address
+		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
+		if err != nil {
+			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		user = fullUser
+	}
+
+	vars := mux.Vars(r)
+	productID := vars["id"]
+
+	var scoreReq models.ScoreSubmissionRequest
+	err := json.NewDecoder(r.Body).Decode(&scoreReq)
+	if err != nil {
+		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	err = h.svc.SubmitProductScore(productID, user.ID, &scoreReq)
+	if err != nil {
+		http.Error(w, "Failed to submit score: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Return the updated scores for this product
+	count, overall, security, ux, vibes, err := h.svc.GetProductScoreStats(productID)
+	if err != nil {
+		http.Error(w, "Failed to get updated scores: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		Message    string  `json:"message"`
+		ScoreCount int     `json:"score_count"`
+		Overall    float64 `json:"overall_score"`
+		Security   float64 `json:"security_score"`
+		UX         float64 `json:"ux_score"`
+		Vibes      float64 `json:"vibes_score"`
+	}{
+		Message:    "Score submitted successfully",
+		ScoreCount: count,
+		Overall:    overall,
+		Security:   security,
+		UX:         ux,
+		Vibes:      vibes,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// GetMyProductScore handles getting the current user's score submission for a specific product
+func (h *Handler) GetMyProductScore(w http.ResponseWriter, r *http.Request) {
+	// Get user from context
+	user, ok := r.Context().Value(middleware.UserContextKey).(*models.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check if user ID is missing
+	if user.ID == "" {
+		// Look up the user from the database by wallet address
+		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
+		if err != nil {
+			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		user = fullUser
+	}
+
+	vars := mux.Vars(r)
+	productID := vars["id"]
+
+	submission, err := h.svc.GetUserScoreSubmission(productID, user.ID)
+	if err != nil {
+		http.Error(w, "Failed to get your product score: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// If no submission found, return 404 with message indicating they haven't submitted
+	if submission == nil {
+		response := struct {
+			HasSubmitted bool   `json:"has_submitted"`
+			Message      string `json:"message"`
+		}{
+			HasSubmitted: false,
+			Message:      "You have not submitted a score for this product yet",
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		json.NewEncoder(w).Encode(response)
+		return
+	}
+
+	// Return the submission details
+	response := struct {
+		HasSubmitted bool                           `json:"has_submitted"`
+		Submission   *models.ProductScoreSubmission `json:"submission"`
+		Message      string                         `json:"message"`
+	}{
+		HasSubmitted: true,
+		Submission:   submission,
+		Message:      "Score submission found",
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
 }
 
 // GetPendingChanges handles getting all pending changes from Redis (for admin dashboard)
