@@ -49,6 +49,9 @@ type Product struct {
 	UpvoteCount int        `json:"upvote_count,omitempty" db:"-"`
 	Submitter   *User      `json:"submitter,omitempty" db:"-"`
 	LastEditor  *User      `json:"last_editor,omitempty" db:"-"`
+
+	// New upvotes system fields
+	TrendingScore float64 `json:"trending_score,omitempty" db:"-"`
 }
 
 // Category represents a product category

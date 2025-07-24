@@ -50,8 +50,11 @@ func main() {
 	// Make sure to close Redis connection when done
 	defer redisService.Close()
 
-	// Initialize service layer with Redis support
-	svc := service.New(pgRepo, redisService, cfg)
+	// Initialize service layer with Redis and upvotes support
+	svc, err := service.New(pgRepo, redisService, cfg)
+	if err != nil {
+		log.Fatalf("Failed to initialize service: %v", err)
+	}
 
 	// Initialize router
 	r := mux.NewRouter()

@@ -27,7 +27,8 @@ type Config struct {
 	DBName     string
 
 	// Redis configuration
-	RedisURL string
+	RedisURL        string
+	UpvotesRedisURL string
 }
 
 // New creates a new configuration from environment variables
@@ -101,6 +102,12 @@ func New() (*Config, error) {
 		redisURL = "redis://localhost:6379/0" // Default for development
 	}
 
+	// Upvotes Redis configuration - separate Redis instance for upvotes
+	upvotesRedisURL := os.Getenv("UPVOTES_REDIS")
+	if upvotesRedisURL == "" {
+		upvotesRedisURL = "redis://localhost:6379/1" // Default for development, different DB
+	}
+
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080" // Default port
@@ -112,16 +119,17 @@ func New() (*Config, error) {
 	}
 
 	return &Config{
-		JWTSecret:   jwtSecret,
-		Port:        port,
-		Environment: environment,
-		AdminWallet: adminWallet,
-		DBHost:      dbHost,
-		DBPort:      dbPort,
-		DBUser:      dbUser,
-		DBPassword:  dbPassword,
-		DBName:      dbName,
-		RedisURL:    redisURL,
+		JWTSecret:       jwtSecret,
+		Port:            port,
+		Environment:     environment,
+		AdminWallet:     adminWallet,
+		DBHost:          dbHost,
+		DBPort:          dbPort,
+		DBUser:          dbUser,
+		DBPassword:      dbPassword,
+		DBName:          dbName,
+		RedisURL:        redisURL,
+		UpvotesRedisURL: upvotesRedisURL,
 	}, nil
 }
 

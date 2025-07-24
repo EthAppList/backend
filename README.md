@@ -309,6 +309,48 @@ To integrate with a Next.js frontend:
 3. Store JWT token in cookies or localStorage
 4. Use token for authenticated requests
 
+## High-Performance Upvotes System
+
+The backend uses a scalable Redis-based upvotes architecture for handling high-volume voting:
+
+### Architecture
+- **Redis Streams**: Vote events processed asynchronously by background workers
+- **Redis Counters**: Real-time vote counts and trending scores
+- **Smart Caching**: User vote states cached with automatic warming after expiry
+- **Immutable Log**: All votes stored in PostgreSQL for data integrity
+
+### Configuration
+```bash
+# Required: Dedicated Redis instance for upvotes (separate from queue Redis)
+UPVOTES_REDIS=redis://your-upvotes-redis-url:6379
+
+# Optional: Number of background workers (default: 2)
+VOTE_WORKERS=2
+```
+
+### Key Features
+- **O(1) Vote Submission**: Instant response via Redis streams
+- **Trending Algorithm**: Reddit-style scoring with site activity adaptation
+- **Cache Warming**: Automatic rebuild of user vote states after login
+- **Batch Operations**: Efficient vote state checking for product lists
+- **Memory Management**: User caches expire after 30 days of inactivity
+
+### API Endpoints
+- `POST /api/products/{id}/upvote` - Submit a vote
+- `GET /api/products/trending` - Get trending products feed
+- `GET /api/user/vote-states?ids=12,34,56` - Check user vote states (auth required)
+- All product lists include `upvote_count` field
+- User vote states fetched separately for efficiency
+
+### Redis Keys Used
+- `project:{id}` - Live vote counters (HASH)
+- `trending` - Trending scores (ZSET) 
+- `user:{uid}:votes` - User vote states (SET)
+- `votes` - Vote event stream
+- `site:24h_votes` - Rolling vote count
+
+The system automatically handles cache warming when users return after inactivity.
+
 ## Development
 
 ```bash

@@ -665,11 +665,16 @@ func (r *PostgresRepository) loadProductChains(product *models.Product) error {
 }
 
 func (r *PostgresRepository) getProductUpvoteCount(productID string) (int, error) {
-	query := `SELECT COUNT(*) FROM upvotes WHERE product_id = $1`
+	// Use project_stats table for fast lookups instead of counting votes table
+	query := `SELECT upvotes_total FROM project_stats WHERE project_id = $1`
 	var count int
 	err := r.db.QueryRow(query, productID).Scan(&count)
+	if err == sql.ErrNoRows {
+		// If no stats record exists, return 0 (this shouldn't happen for approved products)
+		return 0, nil
+	}
 	if err != nil {
-		return 0, fmt.Errorf("failed to count upvotes: %w", err)
+		return 0, fmt.Errorf("failed to get upvotes from project_stats: %w", err)
 	}
 	return count, nil
 }
@@ -850,36 +855,8 @@ func (r *PostgresRepository) GetChains() ([]models.Chain, error) {
 	return chains, nil
 }
 
-// UpvoteProduct adds an upvote to a product
-func (r *PostgresRepository) UpvoteProduct(userID, productID string) error {
-	// Check if user already upvoted this product
-	var count int
-	err := r.db.QueryRow(
-		"SELECT COUNT(*) FROM upvotes WHERE user_id = $1 AND product_id = $2",
-		userID, productID,
-	).Scan(&count)
-
-	if err != nil {
-		return fmt.Errorf("failed to check existing upvote: %w", err)
-	}
-
-	if count > 0 {
-		return errors.New("already upvoted")
-	}
-
-	// Add upvote
-	upvoteID := generateID()
-	_, err = r.db.Exec(
-		"INSERT INTO upvotes (id, user_id, product_id, created_at) VALUES ($1, $2, $3, $4)",
-		upvoteID, userID, productID, time.Now(),
-	)
-
-	if err != nil {
-		return fmt.Errorf("failed to add upvote: %w", err)
-	}
-
-	return nil
-}
+// Note: UpvoteProduct method removed - votes are now handled by Redis streams and workers
+// The workers handle writing to both the votes table and project_stats table
 
 // generateID generates a unique ID for database entities
 func generateID() string {
@@ -1581,4 +1558,9 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 	}
 
 	return nil
+}
+
+// GetDB returns the database connection for use by other services
+func (r *PostgresRepository) GetDB() *sql.DB {
+	return r.db
 }

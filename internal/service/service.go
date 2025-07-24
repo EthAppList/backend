@@ -1,6 +1,7 @@
 package service
 
 import (
+	"database/sql"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -14,6 +15,8 @@ import (
 	"github.com/wesjorgensen/EthAppList/backend/internal/config"
 	"github.com/wesjorgensen/EthAppList/backend/internal/models"
 	"github.com/wesjorgensen/EthAppList/backend/internal/redis"
+	"github.com/wesjorgensen/EthAppList/backend/internal/repository"
+	"github.com/wesjorgensen/EthAppList/backend/internal/upvotes"
 )
 
 // DataRepository interface defines the methods required by the service
@@ -45,24 +48,44 @@ type DataRepository interface {
 	// Chain methods
 	GetChains() ([]models.Chain, error)
 
-	// Upvote methods
-	UpvoteProduct(userID, productID string) error
+	// Note: UpvoteProduct method removed - now handled by Redis streams and workers
 }
 
 // Service implements business logic for the application
 type Service struct {
-	repo  DataRepository
-	redis *redis.RedisService
-	cfg   *config.Config
+	repo           DataRepository
+	redis          *redis.RedisService
+	upvotesService *upvotes.UpvotesService
+	cfg            *config.Config
 }
 
-// New creates a new service with Redis support
-func New(repo DataRepository, redisService *redis.RedisService, cfg *config.Config) *Service {
-	return &Service{
-		repo:  repo,
-		redis: redisService,
-		cfg:   cfg,
+// New creates a new service with Redis and upvotes support
+func New(repo DataRepository, redisService *redis.RedisService, cfg *config.Config) (*Service, error) {
+	// Get the database connection from the repository
+	// We need to add a method to get the DB connection from the repository
+	var db *sql.DB
+	if pgRepo, ok := repo.(*repository.PostgresRepository); ok {
+		db = pgRepo.GetDB() // We'll need to add this method
 	}
+
+	// Initialize upvotes service with database connection
+	upvotesService, err := upvotes.NewUpvotesService(cfg.UpvotesRedisURL, db)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create upvotes service: %w", err)
+	}
+
+	// Start upvotes workers
+	err = upvotesService.Start()
+	if err != nil {
+		return nil, fmt.Errorf("failed to start upvotes service: %w", err)
+	}
+
+	return &Service{
+		repo:           repo,
+		redis:          redisService,
+		upvotesService: upvotesService,
+		cfg:            cfg,
+	}, nil
 }
 
 // GetConfig returns the config for middleware and other components
@@ -221,9 +244,10 @@ func (s *Service) GetChains() ([]models.Chain, error) {
 	return s.repo.GetChains()
 }
 
-// UpvoteProduct adds an upvote to a product
+// UpvoteProduct adds an upvote to a product using the new high-performance Redis-only system
 func (s *Service) UpvoteProduct(userID, productID string) error {
-	return s.repo.UpvoteProduct(userID, productID)
+	// Submit vote to Redis stream for processing - no database fallback needed
+	return s.upvotesService.SubmitVote(userID, productID)
 }
 
 // ApproveEdit approves a pending edit from Redis and merges it to main database
@@ -357,6 +381,21 @@ func (s *Service) RevertProduct(productID string, revisionNumber int, editorID, 
 // GetRecentEdits returns recent product edits across all products
 func (s *Service) GetRecentEdits(limit int) ([]models.RevisionSummary, error) {
 	return s.repo.GetRecentEdits(limit)
+}
+
+// GetTrendingProducts gets trending products from the upvotes service
+func (s *Service) GetTrendingProducts(limit int) ([]string, error) {
+	return s.upvotesService.GetTrendingProducts(limit)
+}
+
+// EnrichProductsWithVoteCounts adds vote counts to products (user vote states fetched separately)
+func (s *Service) EnrichProductsWithVoteCounts(products []*models.Product) error {
+	return s.upvotesService.EnrichProductsWithVoteCounts(products)
+}
+
+// GetUserVoteStates gets vote states for specific products for a user
+func (s *Service) GetUserVoteStates(userID string, productIDs []string) (map[string]bool, error) {
+	return s.upvotesService.GetUserVoteStates(userID, productIDs)
 }
 
 // Helper functions

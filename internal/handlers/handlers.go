@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/gorilla/mux"
 
@@ -40,6 +41,7 @@ func RegisterProductHandlers(router *mux.Router, svc *service.Service) {
 
 	router.HandleFunc("", h.GetProducts).Methods("GET")
 	router.HandleFunc("/{id}", h.GetProduct).Methods("GET")
+	router.HandleFunc("/trending", h.GetTrendingProducts).Methods("GET")
 
 	// Revision system endpoints
 	router.HandleFunc("/{id}/history", h.GetProductHistory).Methods("GET")
@@ -104,6 +106,7 @@ func RegisterUserHandlers(router *mux.Router, svc *service.Service) {
 
 	protectedRouter.HandleFunc("/profile", h.GetUserProfile).Methods("GET")
 	protectedRouter.HandleFunc("/permissions", h.GetUserPermissions).Methods("GET")
+	protectedRouter.HandleFunc("/vote-states", h.GetUserVoteStates).Methods("GET")
 }
 
 // AuthenticateWallet handles wallet authentication
@@ -175,6 +178,13 @@ func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, "Failed to get products: "+err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Add vote counts to products
+	err = h.svc.EnrichProductsWithVoteCounts(products)
+	if err != nil {
+		log.Printf("Warning: failed to enrich products with vote counts: %v", err)
+		// Continue without vote counts
 	}
 
 	// Prepare the response with pagination metadata
@@ -763,6 +773,56 @@ func (h *Handler) GetUserPermissions(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
+// GetUserVoteStates handles checking which products a user has voted for
+func (h *Handler) GetUserVoteStates(w http.ResponseWriter, r *http.Request) {
+	// Get user from context
+	user, ok := r.Context().Value(middleware.UserContextKey).(*models.User)
+	if !ok {
+		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	// Check if user ID is missing
+	if user.ID == "" {
+		// Look up the user from the database by wallet address
+		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
+		if err != nil {
+			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		user = fullUser
+	}
+
+	// Get product IDs from query parameter
+	idsParam := r.URL.Query().Get("ids")
+	if idsParam == "" {
+		http.Error(w, "Missing 'ids' parameter", http.StatusBadRequest)
+		return
+	}
+
+	// Parse comma-separated product IDs
+	productIDs := strings.Split(idsParam, ",")
+	if len(productIDs) == 0 {
+		http.Error(w, "No product IDs provided", http.StatusBadRequest)
+		return
+	}
+
+	// Trim whitespace from each ID
+	for i, id := range productIDs {
+		productIDs[i] = strings.TrimSpace(id)
+	}
+
+	// Get vote states from Redis cache
+	voteStates, err := h.svc.GetUserVoteStates(user.ID, productIDs)
+	if err != nil {
+		http.Error(w, "Failed to get vote states: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(voteStates)
+}
+
 // GetPendingChanges handles getting all pending changes from Redis (for admin dashboard)
 func (h *Handler) GetPendingChanges(w http.ResponseWriter, r *http.Request) {
 	// This endpoint replaces GetPendingEdits for the new Redis-based workflow
@@ -804,4 +864,54 @@ func (h *Handler) GetPendingEdit(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(pendingEdit)
+}
+
+// GetTrendingProducts handles getting trending products
+func (h *Handler) GetTrendingProducts(w http.ResponseWriter, r *http.Request) {
+	// Get limit from query params
+	limitStr := r.URL.Query().Get("limit")
+	limit := 20 // Default limit
+	if limitStr != "" {
+		if parsedLimit, err := strconv.Atoi(limitStr); err == nil && parsedLimit > 0 && parsedLimit <= 100 {
+			limit = parsedLimit
+		}
+	}
+
+	// Get trending product IDs from upvotes service
+	trendingIDs, err := h.svc.GetTrendingProducts(limit)
+	if err != nil {
+		http.Error(w, "Failed to get trending products: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if len(trendingIDs) == 0 {
+		// Return empty array if no trending products
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]*models.Product{})
+		return
+	}
+
+	// Fetch product details for trending products
+	products := make([]*models.Product, 0, len(trendingIDs))
+	for _, id := range trendingIDs {
+		product, err := h.svc.GetProduct(id)
+		if err != nil {
+			log.Printf("Warning: failed to get trending product %s: %v", id, err)
+			continue // Skip products that can't be fetched
+		}
+		products = append(products, product)
+	}
+
+	// Add vote counts to products (but not user vote states - those are fetched separately)
+	err = h.svc.EnrichProductsWithVoteCounts(products)
+	if err != nil {
+		log.Printf("Warning: failed to enrich products with vote counts: %v", err)
+		// Continue without vote counts
+	}
+
+	// Note: User vote states are fetched separately via /api/user/vote-states
+	// This keeps the trending endpoint fast and only fetches user data when needed
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(products)
 }
