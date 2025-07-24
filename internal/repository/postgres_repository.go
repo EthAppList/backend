@@ -1791,6 +1791,10 @@ func (r *PostgresRepository) batchLoadProductChains(productMap map[string]*model
 
 // SubmitProductScore creates or updates a user's score submission for a product
 func (r *PostgresRepository) SubmitProductScore(submission *models.ProductScoreSubmission) error {
+	log.Printf("SubmitProductScore repo: Starting - ProductID: %s, UserID: %s", submission.ProductID, submission.UserID)
+	log.Printf("SubmitProductScore repo: Scores - Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+		submission.OverallScore, submission.SecurityScore, submission.UXScore, submission.VibesScore)
+
 	query := `
 		INSERT INTO product_score_submissions (product_id, user_id, overall_score, security_score, ux_score, vibes_score, updated_at)
 		VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
@@ -1804,6 +1808,8 @@ func (r *PostgresRepository) SubmitProductScore(submission *models.ProductScoreS
 		RETURNING id, created_at, updated_at
 	`
 
+	log.Printf("SubmitProductScore repo: Executing database query")
+
 	err := r.db.QueryRow(query,
 		submission.ProductID,
 		submission.UserID,
@@ -1814,9 +1820,30 @@ func (r *PostgresRepository) SubmitProductScore(submission *models.ProductScoreS
 	).Scan(&submission.ID, &submission.CreatedAt, &submission.UpdatedAt)
 
 	if err != nil {
+		log.Printf("SubmitProductScore repo: Database query failed - %v", err)
+
+		// Check for specific constraint violations
+		errStr := err.Error()
+		if strings.Contains(errStr, "foreign key constraint") {
+			if strings.Contains(errStr, "product_id") {
+				log.Printf("SubmitProductScore repo: Product ID %s does not exist", submission.ProductID)
+				return fmt.Errorf("product not found: %s", submission.ProductID)
+			}
+			if strings.Contains(errStr, "user_id") {
+				log.Printf("SubmitProductScore repo: User ID %s does not exist", submission.UserID)
+				return fmt.Errorf("user not found: %s", submission.UserID)
+			}
+		}
+		if strings.Contains(errStr, "check constraint") {
+			log.Printf("SubmitProductScore repo: Score values out of range - Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+				submission.OverallScore, submission.SecurityScore, submission.UXScore, submission.VibesScore)
+			return fmt.Errorf("score values must be between 0 and 1")
+		}
+
 		return fmt.Errorf("failed to submit product score: %w", err)
 	}
 
+	log.Printf("SubmitProductScore repo: Successfully saved submission with ID: %s", submission.ID)
 	return nil
 }
 
@@ -1854,6 +1881,8 @@ func (r *PostgresRepository) GetUserScoreSubmission(productID, userID string) (*
 
 // GetProductScoreStats gets aggregated score statistics for a product
 func (r *PostgresRepository) GetProductScoreStats(productID string) (int, float64, float64, float64, float64, error) {
+	log.Printf("GetProductScoreStats repo: Getting stats for product %s", productID)
+
 	query := `
 		SELECT score_count, overall_score, security_score, ux_score, vibes_score
 		FROM products
@@ -1865,8 +1894,12 @@ func (r *PostgresRepository) GetProductScoreStats(productID string) (int, float6
 
 	err := r.db.QueryRow(query, productID).Scan(&count, &overall, &security, &ux, &vibes)
 	if err != nil {
+		log.Printf("GetProductScoreStats repo: Database query failed - %v", err)
 		return 0, 0, 0, 0, 0, fmt.Errorf("failed to get product score stats: %w", err)
 	}
+
+	log.Printf("GetProductScoreStats repo: Retrieved stats - Count: %d, Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+		count, overall, security, ux, vibes)
 
 	return count, overall, security, ux, vibes, nil
 }

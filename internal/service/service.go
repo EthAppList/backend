@@ -434,22 +434,32 @@ func (s *Service) GetUserVoteStates(userID string, productIDs []string) (map[str
 
 // SubmitProductScore submits or updates a user's score for a product
 func (s *Service) SubmitProductScore(productID, userID string, req *models.ScoreSubmissionRequest) error {
+	log.Printf("SubmitProductScore service: Starting - ProductID: %s, UserID: %s", productID, userID)
+	log.Printf("SubmitProductScore service: Request scores - Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+		req.Overall, req.Security, req.UX, req.Vibes)
+
 	// Validate the product exists and is approved
-	_, err := s.repo.GetProductByID(productID)
+	product, err := s.repo.GetProductByID(productID)
 	if err != nil {
+		log.Printf("SubmitProductScore service: Product not found - %v", err)
 		return fmt.Errorf("product not found: %w", err)
 	}
+	log.Printf("SubmitProductScore service: Found product - Title: '%s', Approved: %t", product.Title, product.Approved)
 
-	// Check if user exists - we'll validate by attempting to get the user
-	// Since we have userID, we can proceed with validation during score submission
+	// Note: User validation happens in the handler layer where we verify JWT and lookup user
+	log.Printf("SubmitProductScore service: User ID from request: %s", userID)
 
 	// Validate score ranges (should be between 0 and 1)
 	if req.Overall < 0 || req.Overall > 1 ||
 		req.Security < 0 || req.Security > 1 ||
 		req.UX < 0 || req.UX > 1 ||
 		req.Vibes < 0 || req.Vibes > 1 {
+		log.Printf("SubmitProductScore service: Invalid score ranges - Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+			req.Overall, req.Security, req.UX, req.Vibes)
 		return fmt.Errorf("all scores must be between 0 and 1")
 	}
+
+	log.Printf("SubmitProductScore service: Score validation passed")
 
 	// Create the score submission
 	submission := &models.ProductScoreSubmission{
@@ -461,13 +471,16 @@ func (s *Service) SubmitProductScore(productID, userID string, req *models.Score
 		VibesScore:    req.Vibes,
 	}
 
+	log.Printf("SubmitProductScore service: Created submission object, calling repository")
+
 	// Save the submission (this will trigger automatic recalculation via database trigger)
 	err = s.repo.SubmitProductScore(submission)
 	if err != nil {
+		log.Printf("SubmitProductScore service: Repository call failed - %v", err)
 		return fmt.Errorf("failed to submit score: %w", err)
 	}
 
-	log.Printf("Score submitted successfully for product %s by user %s", productID, userID)
+	log.Printf("SubmitProductScore service: Score submitted successfully for product %s by user %s", productID, userID)
 
 	return nil
 }

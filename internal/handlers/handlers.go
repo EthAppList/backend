@@ -827,46 +827,94 @@ func (h *Handler) GetUserVoteStates(w http.ResponseWriter, r *http.Request) {
 
 // SubmitProductScore handles submitting or updating scores for a product
 func (h *Handler) SubmitProductScore(w http.ResponseWriter, r *http.Request) {
+	log.Printf("SubmitProductScore: Starting score submission")
+
 	// Get user from context
 	user, ok := r.Context().Value(middleware.UserContextKey).(*models.User)
 	if !ok {
+		log.Printf("SubmitProductScore: No user in context - unauthorized")
 		http.Error(w, "Unauthorized", http.StatusUnauthorized)
 		return
 	}
 
+	log.Printf("SubmitProductScore: User from context - ID: '%s', Wallet: '%s'", user.ID, user.WalletAddress)
+
 	// Check if user ID is missing
 	if user.ID == "" {
+		log.Printf("SubmitProductScore: User ID missing, looking up by wallet: %s", user.WalletAddress)
 		// Look up the user from the database by wallet address
 		fullUser, err := h.svc.GetUserByWallet(user.WalletAddress)
 		if err != nil {
+			log.Printf("SubmitProductScore: Failed to get user by wallet: %v", err)
 			http.Error(w, "Failed to get user: "+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		user = fullUser
+		log.Printf("SubmitProductScore: Found user - ID: '%s', Wallet: '%s'", user.ID, user.WalletAddress)
 	}
 
 	vars := mux.Vars(r)
 	productID := vars["id"]
+	log.Printf("SubmitProductScore: Product ID: %s", productID)
+
+	// Read and log the raw request body
+	bodyBytes, err := io.ReadAll(r.Body)
+	if err != nil {
+		log.Printf("SubmitProductScore: Failed to read request body: %v", err)
+		http.Error(w, "Failed to read request body", http.StatusInternalServerError)
+		return
+	}
+	log.Printf("SubmitProductScore: Raw request body: %s", string(bodyBytes))
+
+	// Restore request body for JSON decoding
+	r.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
 
 	var scoreReq models.ScoreSubmissionRequest
-	err := json.NewDecoder(r.Body).Decode(&scoreReq)
+	err = json.NewDecoder(r.Body).Decode(&scoreReq)
 	if err != nil {
-		http.Error(w, "Invalid request body", http.StatusBadRequest)
+		log.Printf("SubmitProductScore: Failed to decode request body: %v", err)
+		http.Error(w, "Invalid request body: "+err.Error(), http.StatusBadRequest)
 		return
+	}
+
+	log.Printf("SubmitProductScore: Parsed scores - Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+		scoreReq.Overall, scoreReq.Security, scoreReq.UX, scoreReq.Vibes)
+
+	// Validate that all required score fields are present and within valid ranges
+	// Note: JSON unmarshaling sets missing fields to 0.0, but we want to ensure all scores are actually provided
+	if scoreReq.Overall < 0 || scoreReq.Overall > 1 ||
+		scoreReq.Security < 0 || scoreReq.Security > 1 ||
+		scoreReq.UX < 0 || scoreReq.UX > 1 ||
+		scoreReq.Vibes < 0 || scoreReq.Vibes > 1 {
+		log.Printf("SubmitProductScore: Invalid score ranges detected")
+		http.Error(w, "All scores must be between 0 and 1", http.StatusBadRequest)
+		return
+	}
+
+	// Additional check: warn if all scores are exactly 0 (likely indicates missing fields)
+	if scoreReq.Overall == 0 && scoreReq.Security == 0 && scoreReq.UX == 0 && scoreReq.Vibes == 0 {
+		log.Printf("SubmitProductScore: Warning - all scores are 0, this might indicate missing fields in request")
 	}
 
 	err = h.svc.SubmitProductScore(productID, user.ID, &scoreReq)
 	if err != nil {
+		log.Printf("SubmitProductScore: Service call failed: %v", err)
 		http.Error(w, "Failed to submit score: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	log.Printf("SubmitProductScore: Score submitted successfully, getting updated stats")
+
 	// Return the updated scores for this product
 	count, overall, security, ux, vibes, err := h.svc.GetProductScoreStats(productID)
 	if err != nil {
+		log.Printf("SubmitProductScore: Failed to get updated score stats: %v", err)
 		http.Error(w, "Failed to get updated scores: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	log.Printf("SubmitProductScore: Updated stats - Count: %d, Overall: %.2f, Security: %.2f, UX: %.2f, Vibes: %.2f",
+		count, overall, security, ux, vibes)
 
 	response := struct {
 		Message    string  `json:"message"`
@@ -884,8 +932,17 @@ func (h *Handler) SubmitProductScore(w http.ResponseWriter, r *http.Request) {
 		Vibes:      vibes,
 	}
 
+	log.Printf("SubmitProductScore: Sending response: %+v", response)
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	err = json.NewEncoder(w).Encode(response)
+	if err != nil {
+		log.Printf("SubmitProductScore: Failed to encode JSON response: %v", err)
+		http.Error(w, "Failed to encode response", http.StatusInternalServerError)
+		return
+	}
+
+	log.Printf("SubmitProductScore: Successfully completed")
 }
 
 // GetMyProductScore handles getting the current user's score submission for a specific product
