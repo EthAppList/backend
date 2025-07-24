@@ -49,6 +49,11 @@ type DataRepository interface {
 	// Chain methods
 	GetChains() ([]models.Chain, error)
 
+	// Score submission methods
+	SubmitProductScore(submission *models.ProductScoreSubmission) error
+	GetUserScoreSubmission(productID, userID string) (*models.ProductScoreSubmission, error)
+	GetProductScoreStats(productID string) (int, float64, float64, float64, float64, error)
+
 	// Note: UpvoteProduct method removed - now handled by Redis streams and workers
 }
 
@@ -456,14 +461,8 @@ func (s *Service) SubmitProductScore(productID, userID string, req *models.Score
 		VibesScore:    req.Vibes,
 	}
 
-	// Cast to PostgresRepository to access the new methods
-	pgRepo, ok := s.repo.(*repository.PostgresRepository)
-	if !ok {
-		return fmt.Errorf("repository does not support score submissions")
-	}
-
 	// Save the submission (this will trigger automatic recalculation via database trigger)
-	err = pgRepo.SubmitProductScore(submission)
+	err = s.repo.SubmitProductScore(submission)
 	if err != nil {
 		return fmt.Errorf("failed to submit score: %w", err)
 	}
@@ -475,24 +474,12 @@ func (s *Service) SubmitProductScore(productID, userID string, req *models.Score
 
 // GetUserScoreSubmission gets a user's score submission for a specific product
 func (s *Service) GetUserScoreSubmission(productID, userID string) (*models.ProductScoreSubmission, error) {
-	// Cast to PostgresRepository to access the new methods
-	pgRepo, ok := s.repo.(*repository.PostgresRepository)
-	if !ok {
-		return nil, fmt.Errorf("repository does not support score submissions")
-	}
-
-	return pgRepo.GetUserScoreSubmission(productID, userID)
+	return s.repo.GetUserScoreSubmission(productID, userID)
 }
 
 // GetProductScoreStats gets aggregated score statistics for a product
 func (s *Service) GetProductScoreStats(productID string) (int, float64, float64, float64, float64, error) {
-	// Cast to PostgresRepository to access the new methods
-	pgRepo, ok := s.repo.(*repository.PostgresRepository)
-	if !ok {
-		return 0, 0, 0, 0, 0, fmt.Errorf("repository does not support score submissions")
-	}
-
-	return pgRepo.GetProductScoreStats(productID)
+	return s.repo.GetProductScoreStats(productID)
 }
 
 // Helper functions
