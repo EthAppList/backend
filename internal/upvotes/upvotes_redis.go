@@ -312,8 +312,35 @@ func (u *UpvotesRedisService) InitializeProjectFromDB(projectID string, voteCoun
 
 // CreateConsumerGroup creates the consumer group for vote processing
 func (u *UpvotesRedisService) CreateConsumerGroup() error {
-	// Try to create consumer group (ignore error if already exists)
-	err := u.client.XGroupCreate(u.ctx, VotesStreamKey, VotesConsumerGroup, "0").Err()
+	// First, ensure the stream exists by checking if it has any length
+	// If not, create an empty stream by adding a dummy entry and removing it
+	exists, err := u.client.Exists(u.ctx, VotesStreamKey).Result()
+	if err != nil {
+		return fmt.Errorf("failed to check if stream exists: %w", err)
+	}
+
+	if exists == 0 {
+		// Stream doesn't exist, create it with a dummy entry
+		msgID, err := u.client.XAdd(u.ctx, &redis.XAddArgs{
+			Stream: VotesStreamKey,
+			Values: map[string]interface{}{
+				"init": "dummy",
+			},
+		}).Result()
+		if err != nil {
+			return fmt.Errorf("failed to create stream: %w", err)
+		}
+
+		// Remove the dummy entry
+		_, err = u.client.XDel(u.ctx, VotesStreamKey, msgID).Result()
+		if err != nil {
+			log.Printf("Warning: failed to remove dummy entry from stream: %v", err)
+			// Continue anyway, the dummy entry won't hurt
+		}
+	}
+
+	// Now create the consumer group
+	err = u.client.XGroupCreate(u.ctx, VotesStreamKey, VotesConsumerGroup, "0").Err()
 	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
 		return fmt.Errorf("failed to create consumer group: %w", err)
 	}
