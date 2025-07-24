@@ -75,16 +75,13 @@ BEGIN
             COALESCE(p.vibes_score, 0.5) as vibes_score,
             p.created_at,
             p.updated_at,
-            COUNT(u.id)::BIGINT AS upvote_count
+            COALESCE(ps.upvotes_total, 0)::BIGINT AS upvote_count
         FROM products p
-        LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
+        LEFT JOIN project_stats ps ON p.id = ps.project_id
         JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_filter
         JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_filter
         WHERE p.approved = true
-        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
-                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
-                 p.overall_score, p.security_score, p.ux_score, p.vibes_score, 
-                 p.created_at, p.updated_at
+        ORDER BY upvote_count DESC, p.created_at DESC
         
         LIMIT limit_count
         OFFSET offset_count;
@@ -108,15 +105,11 @@ BEGIN
             COALESCE(p.vibes_score, 0.5) as vibes_score,
             p.created_at,
             p.updated_at,
-            COUNT(u.id)::BIGINT AS upvote_count
+            COALESCE(ps.upvotes_total, 0)::BIGINT AS upvote_count
         FROM products p
-        LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
+        LEFT JOIN project_stats ps ON p.id = ps.project_id
         JOIN product_categories pc ON p.id = pc.product_id AND pc.category_id = category_filter
         WHERE p.approved = true
-        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
-                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
-                 p.overall_score, p.security_score, p.ux_score, p.vibes_score, 
-                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;
@@ -140,15 +133,11 @@ BEGIN
             COALESCE(p.vibes_score, 0.5) as vibes_score,
             p.created_at,
             p.updated_at,
-            COUNT(u.id)::BIGINT AS upvote_count
+            COALESCE(ps.upvotes_total, 0)::BIGINT AS upvote_count
         FROM products p
-        LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
+        LEFT JOIN project_stats ps ON p.id = ps.project_id
         JOIN product_chains ch ON p.id = ch.product_id AND ch.chain_id = chain_filter
         WHERE p.approved = true
-        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
-                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
-                 p.overall_score, p.security_score, p.ux_score, p.vibes_score, 
-                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;
@@ -172,14 +161,10 @@ BEGIN
             COALESCE(p.vibes_score, 0.5) as vibes_score,
             p.created_at,
             p.updated_at,
-            COUNT(u.id)::BIGINT AS upvote_count
+            COALESCE(ps.upvotes_total, 0)::BIGINT AS upvote_count
         FROM products p
-        LEFT JOIN upvotes u ON p.id = u.product_id AND u.created_at >= start_date
+        LEFT JOIN project_stats ps ON p.id = ps.project_id
         WHERE p.approved = true
-        GROUP BY p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.markdown_content, 
-                 p.submitter_id, p.approved, p.is_verified, p.analytics_list, 
-                 p.overall_score, p.security_score, p.ux_score, p.vibes_score, 
-                 p.created_at, p.updated_at
         ORDER BY upvote_count DESC, p.created_at DESC
         LIMIT limit_count
         OFFSET offset_count;

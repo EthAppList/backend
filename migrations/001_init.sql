@@ -43,14 +43,14 @@ CREATE TABLE IF NOT EXISTS products (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create upvotes table (idempotent)
-CREATE TABLE IF NOT EXISTS upvotes (
-    id TEXT PRIMARY KEY,
-    user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
-    product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE (user_id, product_id)
-);
+-- Create upvotes table (idempotent) - DISABLED: Now handled by migration 008
+-- CREATE TABLE IF NOT EXISTS upvotes (
+--     id TEXT PRIMARY KEY,
+--     user_id TEXT REFERENCES users(id) ON DELETE CASCADE,
+--     product_id TEXT REFERENCES products(id) ON DELETE CASCADE,
+--     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+--     UNIQUE (user_id, product_id)
+-- );
 
 -- Create product_categories junction table (idempotent)
 CREATE TABLE IF NOT EXISTS product_categories (
@@ -82,7 +82,7 @@ CREATE TABLE IF NOT EXISTS pending_edits (
 -- Create indexes for performance (idempotent)
 CREATE INDEX IF NOT EXISTS idx_products_approved ON products(approved);
 CREATE INDEX IF NOT EXISTS idx_products_created_at ON products(created_at);
-CREATE INDEX IF NOT EXISTS idx_upvotes_product_id ON upvotes(product_id);
+-- CREATE INDEX IF NOT EXISTS idx_upvotes_product_id ON upvotes(product_id); -- DISABLED: Now handled by migration 008
 CREATE INDEX IF NOT EXISTS idx_pending_edits_status ON pending_edits(status);
 CREATE INDEX IF NOT EXISTS idx_product_categories_product_id ON product_categories(product_id);
 CREATE INDEX IF NOT EXISTS idx_product_categories_category_id ON product_categories(category_id);
@@ -147,7 +147,7 @@ ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE chains ENABLE ROW LEVEL SECURITY;
-ALTER TABLE upvotes ENABLE ROW LEVEL SECURITY;
+-- ALTER TABLE upvotes ENABLE ROW LEVEL SECURITY; -- DISABLED: Now handled by migration 008
 ALTER TABLE product_categories ENABLE ROW LEVEL SECURITY;
 ALTER TABLE product_chains ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pending_edits ENABLE ROW LEVEL SECURITY;

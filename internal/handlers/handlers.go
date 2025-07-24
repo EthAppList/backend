@@ -40,8 +40,8 @@ func RegisterProductHandlers(router *mux.Router, svc *service.Service) {
 	h := New(svc)
 
 	router.HandleFunc("", h.GetProducts).Methods("GET")
-	router.HandleFunc("/{id}", h.GetProduct).Methods("GET")
 	router.HandleFunc("/trending", h.GetTrendingProducts).Methods("GET")
+	router.HandleFunc("/{id}", h.GetProduct).Methods("GET")
 
 	// Revision system endpoints
 	router.HandleFunc("/{id}/history", h.GetProductHistory).Methods("GET")
@@ -877,36 +877,11 @@ func (h *Handler) GetTrendingProducts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Get trending product IDs from upvotes service
-	trendingIDs, err := h.svc.GetTrendingProducts(limit)
+	// Use the optimized batch method to fetch trending products efficiently
+	products, err := h.svc.GetTrendingProductsBatch(limit)
 	if err != nil {
 		http.Error(w, "Failed to get trending products: "+err.Error(), http.StatusInternalServerError)
 		return
-	}
-
-	if len(trendingIDs) == 0 {
-		// Return empty array if no trending products
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode([]*models.Product{})
-		return
-	}
-
-	// Fetch product details for trending products
-	products := make([]*models.Product, 0, len(trendingIDs))
-	for _, id := range trendingIDs {
-		product, err := h.svc.GetProduct(id)
-		if err != nil {
-			log.Printf("Warning: failed to get trending product %s: %v", id, err)
-			continue // Skip products that can't be fetched
-		}
-		products = append(products, product)
-	}
-
-	// Add vote counts to products (but not user vote states - those are fetched separately)
-	err = h.svc.EnrichProductsWithVoteCounts(products)
-	if err != nil {
-		log.Printf("Warning: failed to enrich products with vote counts: %v", err)
-		// Continue without vote counts
 	}
 
 	// Note: User vote states are fetched separately via /api/user/vote-states

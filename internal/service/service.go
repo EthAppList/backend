@@ -29,6 +29,7 @@ type DataRepository interface {
 	CreateProduct(product *models.Product) error
 	GetProductByID(id string) (*models.Product, error)
 	GetProductByIDAdmin(id string) (*models.Product, error)
+	GetProductsByIDs(productIDs []string) ([]*models.Product, error)
 	GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error)
 	UpdateProduct(product *models.Product) error
 	DeleteAllProducts() error
@@ -386,6 +387,34 @@ func (s *Service) GetRecentEdits(limit int) ([]models.RevisionSummary, error) {
 // GetTrendingProducts gets trending products from the upvotes service
 func (s *Service) GetTrendingProducts(limit int) ([]string, error) {
 	return s.upvotesService.GetTrendingProducts(limit)
+}
+
+// GetTrendingProductsBatch efficiently fetches trending products with all relationships using batch queries
+func (s *Service) GetTrendingProductsBatch(limit int) ([]*models.Product, error) {
+	// Get trending product IDs from the upvotes service
+	trendingIDs, err := s.upvotesService.GetTrendingProducts(limit)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trending product IDs: %w", err)
+	}
+
+	if len(trendingIDs) == 0 {
+		return []*models.Product{}, nil
+	}
+
+	// Fetch all products and their relationships efficiently using batch queries
+	products, err := s.repo.GetProductsByIDs(trendingIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get trending products by IDs: %w", err)
+	}
+
+	// Add vote counts to products using the upvotes service
+	err = s.EnrichProductsWithVoteCounts(products)
+	if err != nil {
+		log.Printf("Warning: failed to enrich products with vote counts: %v", err)
+		// Continue without vote counts rather than failing
+	}
+
+	return products, nil
 }
 
 // EnrichProductsWithVoteCounts adds vote counts to products (user vote states fetched separately)

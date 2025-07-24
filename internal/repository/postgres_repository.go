@@ -1564,3 +1564,225 @@ func (r *PostgresRepository) UpdateProduct(product *models.Product) error {
 func (r *PostgresRepository) GetDB() *sql.DB {
 	return r.db
 }
+
+// GetProductsByIDs efficiently fetches multiple products and all their relationships
+func (r *PostgresRepository) GetProductsByIDs(productIDs []string) ([]*models.Product, error) {
+	if len(productIDs) == 0 {
+		return []*models.Product{}, nil
+	}
+
+	// Convert productIDs to a format suitable for PostgreSQL
+	args := make([]interface{}, len(productIDs))
+	placeholders := make([]string, len(productIDs))
+	for i, id := range productIDs {
+		args[i] = id
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+
+	// Simplified query without complex ordering - we'll preserve order in Go code
+	query := `
+		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.website_url, p.github_url, 
+               p.docs_url, p.audit_reports, p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
+               p.analytics_list, p.security_score, p.ux_score, p.overall_score, p.vibes_score,
+               p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at,
+               COALESCE(ps.upvotes_total, 0) as upvote_count,
+               su.wallet_address as submitter_wallet, su.twitter_handle as submitter_twitter,
+               le.wallet_address as last_editor_wallet, le.twitter_handle as last_editor_twitter
+		FROM products p
+		LEFT JOIN project_stats ps ON p.id = ps.project_id
+		LEFT JOIN users su ON p.submitter_id = su.id
+		LEFT JOIN users le ON p.last_editor_id = le.id
+		WHERE p.id IN (` + strings.Join(placeholders, ",") + `) AND p.approved = true
+	`
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get products: %w", err)
+	}
+	defer rows.Close()
+
+	// Create map to store products by ID for efficient lookup
+	productMap := make(map[string]*models.Product)
+
+	for rows.Next() {
+		product := &models.Product{}
+		var submitterWallet, submitterTwitter, lastEditorWallet, lastEditorTwitter sql.NullString
+
+		err := rows.Scan(
+			&product.ID,
+			&product.Title,
+			&product.ShortDesc,
+			&product.LongDesc,
+			&product.LogoURL,
+			&product.WebsiteURL,
+			&product.GitHubURL,
+			&product.DocsURL,
+			pq.Array(&product.AuditReports),
+			&product.MarkdownContent,
+			&product.SubmitterID,
+			&product.Approved,
+			&product.IsVerified,
+			pq.Array(&product.AnalyticsList),
+			&product.SecurityScore,
+			&product.UXScore,
+			&product.OverallScore,
+			&product.VibesScore,
+			&product.CurrentRevisionNumber,
+			&product.LastEditorID,
+			&product.CreatedAt,
+			&product.UpdatedAt,
+			&product.UpvoteCount,
+			&submitterWallet,
+			&submitterTwitter,
+			&lastEditorWallet,
+			&lastEditorTwitter,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan product: %w", err)
+		}
+
+		// Initialize empty slices for categories and chains
+		product.Categories = []models.Category{}
+		product.Chains = []models.Chain{}
+
+		// Set submitter if available
+		if submitterWallet.Valid && product.SubmitterID != "" {
+			product.Submitter = &models.User{
+				ID:            product.SubmitterID,
+				WalletAddress: submitterWallet.String,
+				TwitterHandle: submitterTwitter.String,
+			}
+		}
+
+		// Set last editor if available
+		if lastEditorWallet.Valid && product.LastEditorID != nil && *product.LastEditorID != "" {
+			product.LastEditor = &models.User{
+				ID:            *product.LastEditorID,
+				WalletAddress: lastEditorWallet.String,
+				TwitterHandle: lastEditorTwitter.String,
+			}
+		}
+
+		productMap[product.ID] = product
+	}
+
+	if len(productMap) == 0 {
+		return []*models.Product{}, nil
+	}
+
+	// Batch load categories for all products
+	err = r.batchLoadProductCategories(productMap, productIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load categories: %w", err)
+	}
+
+	// Batch load chains for all products
+	err = r.batchLoadProductChains(productMap, productIDs)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load chains: %w", err)
+	}
+
+	// Preserve the original order from productIDs
+	orderedProducts := make([]*models.Product, 0, len(productIDs))
+	for _, id := range productIDs {
+		if product, exists := productMap[id]; exists {
+			orderedProducts = append(orderedProducts, product)
+		}
+	}
+
+	return orderedProducts, nil
+}
+
+// batchLoadProductCategories loads categories for multiple products in a single query
+func (r *PostgresRepository) batchLoadProductCategories(productMap map[string]*models.Product, productIDs []string) error {
+	args := make([]interface{}, len(productIDs))
+	placeholders := make([]string, len(productIDs))
+	for i, id := range productIDs {
+		args[i] = id
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+
+	query := `
+		SELECT pc.product_id, c.id, c.name, c.description, c.created_at, c.updated_at
+		FROM product_categories pc
+		JOIN categories c ON pc.category_id = c.id
+		WHERE pc.product_id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY pc.product_id, c.name
+	`
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to batch load categories: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var productID string
+		var category models.Category
+
+		err := rows.Scan(
+			&productID,
+			&category.ID,
+			&category.Name,
+			&category.Description,
+			&category.CreatedAt,
+			&category.UpdatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scan category: %w", err)
+		}
+
+		if product, exists := productMap[productID]; exists {
+			product.Categories = append(product.Categories, category)
+		}
+	}
+
+	return nil
+}
+
+// batchLoadProductChains loads chains for multiple products in a single query
+func (r *PostgresRepository) batchLoadProductChains(productMap map[string]*models.Product, productIDs []string) error {
+	args := make([]interface{}, len(productIDs))
+	placeholders := make([]string, len(productIDs))
+	for i, id := range productIDs {
+		args[i] = id
+		placeholders[i] = fmt.Sprintf("$%d", i+1)
+	}
+
+	query := `
+		SELECT pc.product_id, c.id, c.name, c.icon, c.created_at, c.updated_at
+		FROM product_chains pc
+		JOIN chains c ON pc.chain_id = c.id
+		WHERE pc.product_id IN (` + strings.Join(placeholders, ",") + `)
+		ORDER BY pc.product_id, c.name
+	`
+
+	rows, err := r.db.Query(query, args...)
+	if err != nil {
+		return fmt.Errorf("failed to batch load chains: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var productID string
+		var chain models.Chain
+
+		err := rows.Scan(
+			&productID,
+			&chain.ID,
+			&chain.Name,
+			&chain.Icon,
+			&chain.CreatedAt,
+			&chain.UpdatedAt,
+		)
+		if err != nil {
+			return fmt.Errorf("failed to scan chain: %w", err)
+		}
+
+		if product, exists := productMap[productID]; exists {
+			product.Chains = append(product.Chains, chain)
+		}
+	}
+
+	return nil
+}
