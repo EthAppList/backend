@@ -135,8 +135,8 @@ func (u *UpvotesRedisService) ProcessVoteEvent(event VoteEvent) error {
 		return fmt.Errorf("failed to process vote event: %w", err)
 	}
 
-	// Update trending score (separate from pipeline for error handling)
-	err = u.UpdateTrendingScore(event.ProjectID)
+	// Update trending score using the actual vote timestamp (separate from pipeline for error handling)
+	err = u.UpdateTrendingScoreWithTimestamp(event.ProjectID, time.UnixMilli(event.Timestamp))
 	if err != nil {
 		log.Printf("Warning: failed to update trending score for project %s: %v", event.ProjectID, err)
 		// Don't fail the entire operation for trending score issues
@@ -145,8 +145,14 @@ func (u *UpvotesRedisService) ProcessVoteEvent(event VoteEvent) error {
 	return nil
 }
 
-// UpdateTrendingScore calculates and updates the trending score for a project
+// UpdateTrendingScore calculates and updates the trending score for a project using current time
+// This method is kept for backward compatibility but should use UpdateTrendingScoreWithTimestamp when possible
 func (u *UpvotesRedisService) UpdateTrendingScore(projectID string) error {
+	return u.UpdateTrendingScoreWithTimestamp(projectID, time.Now())
+}
+
+// UpdateTrendingScoreWithTimestamp calculates and updates the trending score for a project using a specific timestamp
+func (u *UpvotesRedisService) UpdateTrendingScoreWithTimestamp(projectID string, timestamp time.Time) error {
 	// Get current vote count
 	projectKey := fmt.Sprintf(ProjectHashKey, projectID)
 	voteCountStr, err := u.client.HGet(u.ctx, projectKey, "up").Result()
@@ -174,8 +180,8 @@ func (u *UpvotesRedisService) UpdateTrendingScore(projectID string) error {
 		return fmt.Errorf("failed to parse site votes: %w", err)
 	}
 
-	// Calculate trending score using Reddit-style algorithm
-	score := u.CalculateTrendingScore(voteCount, time.Now(), siteVotes)
+	// Calculate trending score using Reddit-style algorithm with the correct timestamp
+	score := u.CalculateTrendingScore(voteCount, timestamp, siteVotes)
 
 	// Update trending zset
 	err = u.client.ZAdd(u.ctx, TrendingZSetKey, redis.Z{
