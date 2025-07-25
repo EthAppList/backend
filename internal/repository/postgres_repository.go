@@ -440,6 +440,200 @@ func (r *PostgresRepository) GetProductByIDAdmin(id string) (*models.Product, er
 	return product, nil
 }
 
+// GetRandomProducts gets a random selection of products with pagination
+func (r *PostgresRepository) GetRandomProducts(page, perPage int) ([]*models.Product, int, error) {
+	// Base query for counting total approved products
+	countQuery := `SELECT COUNT(*) FROM products WHERE approved = true`
+
+	// Base query for fetching random products
+	query := `
+		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.website_url, p.github_url, 
+               p.docs_url, p.audit_reports, p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
+               p.analytics_list, p.security_score, p.ux_score, p.overall_score, p.vibes_score,
+               p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at
+		FROM products p
+		WHERE p.approved = true
+		ORDER BY RANDOM()
+		LIMIT $1 OFFSET $2
+	`
+
+	// Get total count
+	var total int
+	err := r.db.QueryRow(countQuery).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count products: %w", err)
+	}
+
+	// Calculate offset
+	offset := (page - 1) * perPage
+
+	// Execute query
+	rows, err := r.db.Query(query, perPage, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get random products: %w", err)
+	}
+	defer rows.Close()
+
+	// Process results
+	products := []*models.Product{}
+	for rows.Next() {
+		product := &models.Product{}
+		err := rows.Scan(
+			&product.ID,
+			&product.Title,
+			&product.ShortDesc,
+			&product.LongDesc,
+			&product.LogoURL,
+			&product.WebsiteURL,
+			&product.GitHubURL,
+			&product.DocsURL,
+			pq.Array(&product.AuditReports),
+			&product.MarkdownContent,
+			&product.SubmitterID,
+			&product.Approved,
+			&product.IsVerified,
+			pq.Array(&product.AnalyticsList),
+			&product.SecurityScore,
+			&product.UXScore,
+			&product.OverallScore,
+			&product.VibesScore,
+			&product.CurrentRevisionNumber,
+			&product.LastEditorID,
+			&product.CreatedAt,
+			&product.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to scan product: %w", err)
+		}
+
+		// Load categories and chains
+		if err = r.loadProductCategories(product); err != nil {
+			return nil, 0, err
+		}
+		if err = r.loadProductChains(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Load submitter
+		if err = r.loadProductSubmitter(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Load last editor
+		if err = r.loadProductLastEditor(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Get upvote count
+		upvoteCount, err := r.getProductUpvoteCount(product.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		product.UpvoteCount = upvoteCount
+
+		products = append(products, product)
+	}
+
+	return products, total, nil
+}
+
+// GetNewestProducts gets the newest products by timestamp with pagination
+func (r *PostgresRepository) GetNewestProducts(page, perPage int) ([]*models.Product, int, error) {
+	// Base query for counting total approved products
+	countQuery := `SELECT COUNT(*) FROM products WHERE approved = true`
+
+	// Base query for fetching newest products
+	query := `
+		SELECT p.id, p.title, p.short_desc, p.long_desc, p.logo_url, p.website_url, p.github_url, 
+               p.docs_url, p.audit_reports, p.markdown_content, p.submitter_id, p.approved, p.is_verified, 
+               p.analytics_list, p.security_score, p.ux_score, p.overall_score, p.vibes_score,
+               p.current_revision_number, p.last_editor_id, p.created_at, p.updated_at
+		FROM products p
+		WHERE p.approved = true
+		ORDER BY p.created_at DESC
+		LIMIT $1 OFFSET $2
+	`
+
+	// Get total count
+	var total int
+	err := r.db.QueryRow(countQuery).Scan(&total)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count products: %w", err)
+	}
+
+	// Calculate offset
+	offset := (page - 1) * perPage
+
+	// Execute query
+	rows, err := r.db.Query(query, perPage, offset)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to get newest products: %w", err)
+	}
+	defer rows.Close()
+
+	// Process results
+	products := []*models.Product{}
+	for rows.Next() {
+		product := &models.Product{}
+		err := rows.Scan(
+			&product.ID,
+			&product.Title,
+			&product.ShortDesc,
+			&product.LongDesc,
+			&product.LogoURL,
+			&product.WebsiteURL,
+			&product.GitHubURL,
+			&product.DocsURL,
+			pq.Array(&product.AuditReports),
+			&product.MarkdownContent,
+			&product.SubmitterID,
+			&product.Approved,
+			&product.IsVerified,
+			pq.Array(&product.AnalyticsList),
+			&product.SecurityScore,
+			&product.UXScore,
+			&product.OverallScore,
+			&product.VibesScore,
+			&product.CurrentRevisionNumber,
+			&product.LastEditorID,
+			&product.CreatedAt,
+			&product.UpdatedAt,
+		)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to scan product: %w", err)
+		}
+
+		// Load categories and chains
+		if err = r.loadProductCategories(product); err != nil {
+			return nil, 0, err
+		}
+		if err = r.loadProductChains(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Load submitter
+		if err = r.loadProductSubmitter(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Load last editor
+		if err = r.loadProductLastEditor(product); err != nil {
+			return nil, 0, err
+		}
+
+		// Get upvote count
+		upvoteCount, err := r.getProductUpvoteCount(product.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		product.UpvoteCount = upvoteCount
+
+		products = append(products, product)
+	}
+
+	return products, total, nil
+}
+
 // GetProducts gets a list of products with optional filters
 func (r *PostgresRepository) GetProducts(
 	categoryID, chainID, searchTerm, sortOption string,

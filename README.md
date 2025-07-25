@@ -182,6 +182,18 @@ go run cmd/server/main.go
     }
     ```
 
+- `GET /api/products/random` - Get a random selection of products
+  - Query parameters:
+    - `page` - Page number (default: 1)
+    - `per_page` - Items per page (default: 10)
+  - Response: Same structure as `/api/products`
+
+- `GET /api/products/new` - Get the newest products by timestamp
+  - Query parameters:
+    - `page` - Page number (default: 1)
+    - `per_page` - Items per page (default: 10)
+  - Response: Same structure as `/api/products`
+
 - `GET /api/products/{id}` - Get a specific product
   - Response: Product object with categories, chains, and upvote count
 

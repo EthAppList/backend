@@ -108,6 +108,44 @@ Get all products with optional filtering and pagination.
 }
 ```
 
+### GET `/api/products/random`
+Get a random selection of products with pagination.
+
+**Authentication:** None  
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 10)
+
+**Response:**
+```json
+{
+  "products": [Product],
+  "total": "integer",
+  "page": "integer", 
+  "per_page": "integer",
+  "pages": "integer"
+}
+```
+
+### GET `/api/products/new`
+Get the newest products by timestamp with pagination.
+
+**Authentication:** None  
+**Query Parameters:**
+- `page` (optional): Page number (default: 1)
+- `per_page` (optional): Items per page (default: 10)
+
+**Response:**
+```json
+{
+  "products": [Product],
+  "total": "integer",
+  "page": "integer", 
+  "per_page": "integer",
+  "pages": "integer"
+}
+```
+
 ### GET `/api/products/{id}`
 Get a specific product by ID.
 

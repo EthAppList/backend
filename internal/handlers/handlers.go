@@ -41,6 +41,8 @@ func RegisterProductHandlers(router *mux.Router, svc *service.Service) {
 
 	router.HandleFunc("", h.GetProducts).Methods("GET")
 	router.HandleFunc("/trending", h.GetTrendingProducts).Methods("GET")
+	router.HandleFunc("/random", h.GetRandomProducts).Methods("GET")
+	router.HandleFunc("/new", h.GetNewestProducts).Methods("GET")
 	router.HandleFunc("/{id}", h.GetProduct).Methods("GET")
 
 	// Revision system endpoints
@@ -179,6 +181,118 @@ func (h *Handler) GetProducts(w http.ResponseWriter, r *http.Request) {
 	products, total, err := h.svc.GetProducts(categoryID, chainID, searchTerm, sortOption, page, perPage)
 	if err != nil {
 		http.Error(w, "Failed to get products: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Add vote counts to products
+	err = h.svc.EnrichProductsWithVoteCounts(products)
+	if err != nil {
+		log.Printf("Warning: failed to enrich products with vote counts: %v", err)
+		// Continue without vote counts
+	}
+
+	// Prepare the response with pagination metadata
+	response := struct {
+		Products []*models.Product `json:"products"`
+		Total    int               `json:"total"`
+		Page     int               `json:"page"`
+		PerPage  int               `json:"per_page"`
+		Pages    int               `json:"pages"`
+	}{
+		Products: products,
+		Total:    total,
+		Page:     page,
+		PerPage:  perPage,
+		Pages:    (total + perPage - 1) / perPage, // Ceiling division to get total pages
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// GetRandomProducts handles getting a random selection of products with pagination
+func (h *Handler) GetRandomProducts(w http.ResponseWriter, r *http.Request) {
+	// Parse pagination parameters
+	page := 1
+	perPage := 10
+
+	pageStr := r.URL.Query().Get("page")
+	perPageStr := r.URL.Query().Get("per_page")
+
+	if pageStr != "" {
+		parsedPage, err := strconv.Atoi(pageStr)
+		if err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	if perPageStr != "" {
+		parsedPerPage, err := strconv.Atoi(perPageStr)
+		if err == nil && parsedPerPage > 0 {
+			perPage = parsedPerPage
+		}
+	}
+
+	// Call the service to get random products
+	products, total, err := h.svc.GetRandomProducts(page, perPage)
+	if err != nil {
+		http.Error(w, "Failed to get random products: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Add vote counts to products
+	err = h.svc.EnrichProductsWithVoteCounts(products)
+	if err != nil {
+		log.Printf("Warning: failed to enrich products with vote counts: %v", err)
+		// Continue without vote counts
+	}
+
+	// Prepare the response with pagination metadata
+	response := struct {
+		Products []*models.Product `json:"products"`
+		Total    int               `json:"total"`
+		Page     int               `json:"page"`
+		PerPage  int               `json:"per_page"`
+		Pages    int               `json:"pages"`
+	}{
+		Products: products,
+		Total:    total,
+		Page:     page,
+		PerPage:  perPage,
+		Pages:    (total + perPage - 1) / perPage, // Ceiling division to get total pages
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(response)
+}
+
+// GetNewestProducts handles getting the newest products by timestamp with pagination
+func (h *Handler) GetNewestProducts(w http.ResponseWriter, r *http.Request) {
+	// Parse pagination parameters
+	page := 1
+	perPage := 10
+
+	pageStr := r.URL.Query().Get("page")
+	perPageStr := r.URL.Query().Get("per_page")
+
+	if pageStr != "" {
+		parsedPage, err := strconv.Atoi(pageStr)
+		if err == nil && parsedPage > 0 {
+			page = parsedPage
+		}
+	}
+
+	if perPageStr != "" {
+		parsedPerPage, err := strconv.Atoi(perPageStr)
+		if err == nil && parsedPerPage > 0 {
+			perPage = parsedPerPage
+		}
+	}
+
+	// Call the service to get newest products
+	products, total, err := h.svc.GetNewestProducts(page, perPage)
+	if err != nil {
+		http.Error(w, "Failed to get newest products: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 

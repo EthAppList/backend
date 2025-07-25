@@ -31,6 +31,8 @@ type DataRepository interface {
 	GetProductByIDAdmin(id string) (*models.Product, error)
 	GetProductsByIDs(productIDs []string) ([]*models.Product, error)
 	GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error)
+	GetRandomProducts(page, perPage int) ([]*models.Product, int, error)
+	GetNewestProducts(page, perPage int) ([]*models.Product, int, error)
 	UpdateProduct(product *models.Product) error
 	DeleteAllProducts() error
 
@@ -132,6 +134,16 @@ func (s *Service) AuthenticateWallet(address, signature, message string) (string
 // GetProducts returns a list of products based on filter
 func (s *Service) GetProducts(categoryID, chainID, searchTerm, sortOption string, page, perPage int) ([]*models.Product, int, error) {
 	return s.repo.GetProducts(categoryID, chainID, searchTerm, sortOption, page, perPage)
+}
+
+// GetRandomProducts returns a random selection of products with pagination
+func (s *Service) GetRandomProducts(page, perPage int) ([]*models.Product, int, error) {
+	return s.repo.GetRandomProducts(page, perPage)
+}
+
+// GetNewestProducts returns the newest products by timestamp with pagination
+func (s *Service) GetNewestProducts(page, perPage int) ([]*models.Product, int, error) {
+	return s.repo.GetNewestProducts(page, perPage)
 }
 
 // GetProduct returns a single APPROVED product by ID (public API)
