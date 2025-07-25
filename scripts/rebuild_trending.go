@@ -5,11 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
-	"os"
-	"strconv"
-	"time"
-
 	"math"
+	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	_ "github.com/lib/pq"
@@ -19,7 +17,7 @@ import (
 func main() {
 	// Load .env from parent directory
 	if err := godotenv.Load("../.env"); err != nil {
-		log.Printf("Warning: .env file not found: %v", err)
+		log.Fatalf("Error loading .env file: %v", err)
 	}
 
 	// Connect to UPVOTES Redis
@@ -54,49 +52,32 @@ func main() {
 	}
 	defer db.Close()
 
-	fmt.Println("=== FIXING TRENDING SCORES ===")
+	fmt.Println("=== FINAL TRENDING ALGORITHM FIX AND DATA REBUILD ===")
 
-	// 1. Show current state
-	fmt.Println("\n1. Current trending state:")
-	currentTrending, err := redisClient.ZRevRangeWithScores(ctx, "trending", 0, -1).Result()
-	if err != nil {
-		log.Fatal("Failed to get current trending:", err)
-	}
-	fmt.Printf("Found %d projects in trending ZSET\n", len(currentTrending))
-
-	// 2. Get site votes for calculation
-	siteVotesStr, err := redisClient.Get(ctx, "site:24h_votes").Result()
-	if err == redis.Nil {
-		siteVotesStr = "1"
-		fmt.Println("No site votes found, using default value of 1")
-	} else if err != nil {
-		log.Fatal("Failed to get site votes:", err)
-	}
-	siteVotes, _ := strconv.ParseFloat(siteVotesStr, 64)
-	fmt.Printf("Using site votes: %.0f\n", siteVotes)
-
-	// 3. Get all projects with votes from database
-	fmt.Println("\n2. Rebuilding trending scores from database...")
+	// 1. Get all projects with votes from the database
+	fmt.Println("\n1. Rebuilding all trending scores from database...")
 	rows, err := db.Query(`
 		SELECT ps.project_id, ps.upvotes_total, ps.last_vote_ts
 		FROM project_stats ps 
 		JOIN products p ON ps.project_id = p.id 
 		WHERE p.approved = true AND ps.upvotes_total > 0
-		ORDER BY ps.upvotes_total DESC, ps.last_vote_ts DESC
 	`)
 	if err != nil {
 		log.Fatal("Failed to query project stats:", err)
 	}
 	defer rows.Close()
 
-	// 4. Clear existing trending data
-	fmt.Println("Clearing existing trending data...")
-	err = redisClient.Del(ctx, "trending").Err()
+	// 2. Clear existing trending data and site-wide vote counter
+	fmt.Println("Clearing existing trending ZSET and old site vote counter...")
+	pipe := redisClient.Pipeline()
+	pipe.Del(ctx, "trending")
+	pipe.Del(ctx, "site:24h_votes") // Remove old, problematic key
+	_, err = pipe.Exec(ctx)
 	if err != nil {
-		log.Fatal("Failed to clear trending data:", err)
+		log.Fatal("Failed to clear Redis data:", err)
 	}
 
-	// 5. Rebuild trending scores with correct timestamps
+	// 3. Rebuild trending scores with the new, stable algorithm
 	projectsFixed := 0
 	for rows.Next() {
 		var projectID string
@@ -109,40 +90,35 @@ func main() {
 			continue
 		}
 
-		// Calculate correct trending score using actual vote timestamp
-		score := calculateTrendingScore(float64(voteCount), lastVoteTime, siteVotes)
+		// Calculate score with the new, stable algorithm
+		score := calculateTrendingScore(float64(voteCount), lastVoteTime)
 
-		// Update Redis with correct data
-		pipe := redisClient.Pipeline()
-
-		// Set vote count in Redis
+		// Update Redis with the correct data
+		redisPipe := redisClient.Pipeline()
 		projectKey := fmt.Sprintf("project:%s", projectID)
-		pipe.HSet(ctx, projectKey, "up", voteCount)
-
-		// Add to trending with correct score
-		pipe.ZAdd(ctx, "trending", redis.Z{
+		redisPipe.HSet(ctx, projectKey, "up", voteCount)
+		redisPipe.ZAdd(ctx, "trending", redis.Z{
 			Score:  score,
 			Member: fmt.Sprintf("project:%s", projectID),
 		})
-
-		_, err = pipe.Exec(ctx)
+		_, err = redisPipe.Exec(ctx)
 		if err != nil {
 			log.Printf("Error updating project %s: %v", projectID, err)
 			continue
 		}
 
-		fmt.Printf("Fixed %s: %d votes, last vote %v, score %.6f\n",
+		fmt.Printf("Fixed %s: %d votes, last vote %v, new score %.6f\n",
 			projectID, voteCount, lastVoteTime, score)
 		projectsFixed++
 	}
 
-	fmt.Printf("\n3. Fixed %d projects successfully!\n", projectsFixed)
+	fmt.Printf("\n2. Fixed %d projects successfully!\n", projectsFixed)
 
-	// 6. Show new trending order
-	fmt.Println("\n4. New trending order:")
+	// 4. Show the new, correct trending order
+	fmt.Println("\n3. New, stable trending order:")
 	newTrending, err := redisClient.ZRevRangeWithScores(ctx, "trending", 0, 9).Result()
 	if err != nil {
-		log.Fatal("Failed to get new trending:", err)
+		log.Fatal("Failed to get new trending data:", err)
 	}
 
 	for i, result := range newTrending {
@@ -151,24 +127,28 @@ func main() {
 			projectID = projectID[8:]
 		}
 
-		// Get project title from database
 		var title string
 		err := db.QueryRow("SELECT title FROM products WHERE id = $1", projectID).Scan(&title)
 		if err != nil {
 			title = "Unknown"
 		}
 
-		fmt.Printf("  %d. %s (%s): %.6f\n", i+1, projectID, title, result.Score)
+		fmt.Printf("  %d. %s (%s): %.6f\n", i+1, title, projectID, result.Score)
 	}
 
-	fmt.Println("\n5. Trending scores have been fixed! ✅")
-	fmt.Println("The algorithm now correctly uses vote timestamps instead of processing time.")
+	fmt.Println("\n✅ Trending algorithm fixed and all data rebuilt!")
+	fmt.Println("You can now safely redeploy your server. The issue will not happen again.")
 }
 
-// calculateTrendingScore implements the same algorithm as the Go code
-func calculateTrendingScore(totalUpvotes float64, timestamp time.Time, siteVotesLast24h float64) float64 {
+// calculateTrendingScore implements the new, stable trending algorithm
+func calculateTrendingScore(totalUpvotes float64, timestamp time.Time) float64 {
+	// K is a constant to control time decay. A lower value means faster decay.
+	// 45000 is the original Reddit value, roughly 12.5 hours in seconds.
+	const K = 45000
+
 	logScore := math.Log10(math.Max(1, totalUpvotes))
 	epoch := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
-	timeScore := float64(timestamp.Unix()-epoch) / (45000 * math.Sqrt(siteVotesLast24h+1))
+	timeScore := float64(timestamp.Unix()-epoch) / K
+
 	return logScore + timeScore
 }

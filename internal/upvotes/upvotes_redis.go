@@ -61,7 +61,6 @@ const (
 	ProjectHashKey     = "project:%s"      // project:{id} -> HASH with 'up' field
 	TrendingZSetKey    = "trending"        // ZSET with score -> project:{id}
 	UserVotesSetKey    = "user:%s:votes"   // user:{uid}:votes -> SET of project_ids
-	SiteVotesCountKey  = "site:24h_votes"  // STRING with 24h rolling count
 	VotesStreamKey     = "votes"           // STREAM for vote events
 	VotesConsumerGroup = "vote_processors" // Consumer group name
 	VotesConsumerName  = "processor_%d"    // Consumer name pattern
@@ -125,10 +124,6 @@ func (u *UpvotesRedisService) ProcessVoteEvent(event VoteEvent) error {
 	// Set TTL on user votes set (7 days for inactive users)
 	pipe.Expire(u.ctx, userVotesKey, 7*24*time.Hour)
 
-	// Increment site-wide 24h vote counter
-	pipe.Incr(u.ctx, SiteVotesCountKey)
-	pipe.Expire(u.ctx, SiteVotesCountKey, 24*time.Hour)
-
 	// Execute pipeline
 	_, err := pipe.Exec(u.ctx)
 	if err != nil {
@@ -167,21 +162,8 @@ func (u *UpvotesRedisService) UpdateTrendingScoreWithTimestamp(projectID string,
 		return fmt.Errorf("failed to parse vote count: %w", err)
 	}
 
-	// Get 24h site votes for K calculation
-	siteVotesStr, err := u.client.Get(u.ctx, SiteVotesCountKey).Result()
-	if err == redis.Nil {
-		siteVotesStr = "1" // Default to prevent division by zero
-	} else if err != nil {
-		return fmt.Errorf("failed to get site votes: %w", err)
-	}
-
-	siteVotes, err := strconv.ParseFloat(siteVotesStr, 64)
-	if err != nil {
-		return fmt.Errorf("failed to parse site votes: %w", err)
-	}
-
 	// Calculate trending score using Reddit-style algorithm with the correct timestamp
-	score := u.CalculateTrendingScore(voteCount, timestamp, siteVotes)
+	score := u.CalculateTrendingScore(voteCount, timestamp)
 
 	// Update trending zset
 	err = u.client.ZAdd(u.ctx, TrendingZSetKey, redis.Z{
@@ -197,15 +179,17 @@ func (u *UpvotesRedisService) UpdateTrendingScoreWithTimestamp(projectID string,
 }
 
 // CalculateTrendingScore implements the Reddit-style trending algorithm
-func (u *UpvotesRedisService) CalculateTrendingScore(totalUpvotes float64, timestamp time.Time, siteVotesLast24h float64) float64 {
+func (u *UpvotesRedisService) CalculateTrendingScore(totalUpvotes float64, timestamp time.Time) float64 {
 	// Reddit-style scoring: log10(max(1, totalUpvotes)) + (timestamp - epoch) / K
-	// K = 45000 × √(siteVotesLast24h + 1)
+	// K is a constant to control time decay. A lower value means faster decay.
+	// 45000 is the original Reddit value, roughly 12.5 hours in seconds.
+	const K = 45000
 
 	logScore := math.Log10(math.Max(1, totalUpvotes))
 
 	// Use Unix timestamp in seconds for time component
 	epoch := time.Date(2023, 1, 1, 0, 0, 0, 0, time.UTC).Unix()
-	timeScore := float64(timestamp.Unix()-epoch) / (45000 * math.Sqrt(siteVotesLast24h+1))
+	timeScore := float64(timestamp.Unix()-epoch) / K
 
 	return logScore + timeScore
 }
@@ -290,19 +274,7 @@ func (u *UpvotesRedisService) InitializeProjectFromDB(projectID string, voteCoun
 	}
 
 	// Update trending score
-	siteVotesStr, err := u.client.Get(u.ctx, SiteVotesCountKey).Result()
-	if err == redis.Nil {
-		siteVotesStr = "1"
-	} else if err != nil {
-		return fmt.Errorf("failed to get site votes: %w", err)
-	}
-
-	siteVotes, err := strconv.ParseFloat(siteVotesStr, 64)
-	if err != nil {
-		return fmt.Errorf("failed to parse site votes: %w", err)
-	}
-
-	score := u.CalculateTrendingScore(float64(voteCount), lastVoteTime, siteVotes)
+	score := u.CalculateTrendingScore(float64(voteCount), lastVoteTime)
 
 	err = u.client.ZAdd(u.ctx, TrendingZSetKey, redis.Z{
 		Score:  score,
